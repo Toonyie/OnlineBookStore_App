@@ -1,5 +1,5 @@
 # app.py
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 import sqlite3
 from pathlib import Path
 import bcrypt
@@ -69,5 +69,145 @@ def logout():
     print("Logged out.")
     return True
 
+#Searching for books based on title and author
+def booksearch(title = None, author = None):
+    conn = sqlite3.connect(DB_PATH)
+    cols = "book_id, title, author, price_buy, price_rent, active"
+    try: #Depending on the request, we get all the books and append them to a results list
+        curr = conn.cursor()
+        if title and not author:
+            curr.execute(f"SELECT {cols} FROM books WHERE title = ?", (title,))
+        elif author and not title:
+            curr.execute(f"SELECT {cols} FROM books WHERE author = ?", (author,))
+        elif author and title:
+            curr.execute(f"SELECT {cols} FROM books WHERE title = ? AND author = ?", (title, author,))    
+        rows = curr.fetchall()
+        results = []
+        for row in rows:
+            results.append({
+                "book_id": row[0],
+                "title": row[1],
+                "author": row[2],
+                "price_buy": row[3],
+                "price_rent": row[4],
+                "active": row[5]
+            })
+        return results
+    
+    except sqlite3.Error as e:
+        print("Database error:", e)
+        return []
+    
+    finally:
+        conn.close()
+    
+# def add_to_cart(books, type):
+#     conn = sqlite3.connect(DB_PATH)
+#     cols = 
+#     match (type):
+#         case "rent":
+#             for book in books:
+#         case "buy":
+#------------------------Manager Functions --------------
+#Manager views all orders
+def view_orders():
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        curr = conn.cursor()
+        cols = "user_id, status, payed, created_at"
+        curr.execute(f"SELECT {cols} FROM orders")
+        rows = curr.fetchall()
+        results = []
+        for row in rows:
+            results.append({
+                "user_id": row[0],
+                "status": row[1],
+                "payed": row[2],
+                "created_at": row[3],
+                })
+        return results
+    
+    except sqlite3.Error as e:
+        print("Database error:", e)
+        return []
+    finally:
+        conn.close()
+#Manager updates order statuses
+def update_status(orderid, status):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        curr = conn.cursor()
+        curr.execute(f"UPDATE orders SET status = ? WHERE order_id = ?", (status, orderid,))
+        conn.commit()
+        print(f"Order {orderid} updated to status '{status}'.")
+        return True
+    except sqlite3.Error as e:
+        print("Database error:", e)
+        return False
+    finally:
+        conn.close()
+
+#Add book to book list
+def add_book(title, author, price_buy, price_rent):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        curr = conn.cursor()
+        curr.execute(f"INSERT INTO books VALUES (?, ?, ?, ?)", (title, author, price_buy, price_rent))
+        conn.commit()
+        print(f"Added {title} from {author} with price {price_buy} for buying and price {price_rent} for rent")
+        return True
+    except sqlite3.Error as e:
+        print("Database error:", e)
+        return False
+    finally:
+        conn.close()
+
+#Change book status
+def change_book_status(book_id, status):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        curr = conn.cursor()
+        curr.execute(f"UPDATE books SET active = ? WHERE book_id = ?", (status, book_id,))
+        conn.commit()
+        print(f"Changed {book_id} status to {status}")
+        return True
+    except sqlite3.Error as e:
+        print("Database error:", e)
+        return False
+    finally:
+        conn.close()
+    
+@app.route("/", methods=["GET"])
+def root():
+    return jsonify(ok=True, message="API running")
+
+def route_create_account():
+    data = request.get_json(silent=True) or {}
+    username = data.get("username")
+    password = data.get("password")
+    email    = data.get("email")
+    is_customer = data.get("is_customer", True)
+
+    if not username or not password or not email:
+        return jsonify(ok=False, message="Missing username/password/email"), 400
+
+    ok = create_account(username, password, email, is_customer)
+    if ok:
+        return jsonify(ok=True, message="Account created"), 201
+    else:
+        # if your create_account prints specific errors, you could surface them here
+        return jsonify(ok=False, message="DB error (possibly duplicate username/email)"), 409
+    
+# @app.get("/books")
+# def route_booksearch():
+#     title = request.args.get("title")
+#     author = request.args.get("author")
+#     books = booksearch(title=title, author=author)
+#     return jsonify(ok=True, count=len(books), books=books)
+
 if __name__ == "__main__":
     app.run(debug=True)
+
+
+
+# def 
