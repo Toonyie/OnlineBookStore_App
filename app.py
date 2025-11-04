@@ -12,6 +12,7 @@ CURRENT_USER = None #Just what we will use to authenticate the user
 def is_authenticated():
     return CURRENT_USER is not None
 
+
 #Create a user account
 def create_account(username, password, email, is_customer):
     conn = sqlite3.connect(DB_PATH)
@@ -151,7 +152,7 @@ def add_book(title, author, price_buy, price_rent):
     try:
         conn = sqlite3.connect(DB_PATH)
         curr = conn.cursor()
-        curr.execute(f"INSERT INTO books VALUES (?, ?, ?, ?)", (title, author, price_buy, price_rent))
+        curr.execute(f"INSERT INTO books (title, author, price_buy, price_rent) VALUES (?, ?, ?, ?)", (title, author, float(price_buy), float(price_rent)))
         conn.commit()
         print(f"Added {title} from {author} with price {price_buy} for buying and price {price_rent} for rent")
         return True
@@ -223,14 +224,31 @@ def route_to_logout():
         return jsonify(ok=True, message="Logged out successfully."), 200    
     else:
         return jsonify(ok=False, message="Logout failed."), 500
-      
-# @app.get("/books")
-# def route_booksearch():
-#     data = requests.get_json(silent = True) or {}   
-#     title = dataget("title")
-#     author = data.get("author")
-#     books = booksearch(title=title, author=author)
-#     return jsonify(ok=True, count=len(books), books=books)
+
+@app.route("/addbook", methods = ["POST"])
+@auth_required 
+@require_roles("manager")    
+def addbook():
+    data = request.get_json(silent=True) or {}
+    title = data.get("title")
+    author = data.get("author")
+    price_buy = data.get("price_buy")
+    price_rent = data.get("price_rent")
+    ok = add_book(title, author, price_buy, price_rent)
+    if ok:
+        return jsonify(ok=True, message="Book Added!"), 201
+    else:
+        return jsonify(ok=False, message="Failed to add book"), 409
+
+@app.get("/books")
+@auth_required
+@require_roles("manager")
+def route_booksearch():
+    data = request.get_json(silent = True) or {}   
+    title_input = data.get("title")
+    author_input = data.get("author")
+    books = booksearch(title=title_input, author=author_input)
+    return jsonify(ok=True, count=len(books), books=books), 200
 
 if __name__ == "__main__":
     app.run(debug=True)
