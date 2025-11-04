@@ -16,11 +16,10 @@ def is_authenticated():
 def create_account(username, password, email, is_customer):
     conn = sqlite3.connect(DB_PATH)
     hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()) #Encode the password string into bits
-
     try:
         cur = conn.cursor()
         #Here we will store the encrypted password by decoding it which returns a string
-        cur.execute("INSERT INTO users (username, password, email, role) VALUES (?, ?, ?, ?)", (username, hashed_pw.decode('utf-8'), email, "customer" if is_customer else "manager")) 
+        cur.execute("INSERT INTO users (username, password_hash, email, role) VALUES (?, ?, ?, ?)", (username, hashed_pw.decode('utf-8'), email, "customer" if is_customer else "manager")) 
         conn.commit()
         print("Account created!")
         return True 
@@ -35,7 +34,7 @@ def login(username, password):
     conn = sqlite3.connect(DB_PATH)
     try:
         cur = conn.cursor()
-        cur.execute("SELECT password FROM users WHERE username = ?", (username,))
+        cur.execute("SELECT username, password_hash FROM users WHERE username = ?", (username,))
         row = cur.fetchone()
 
         #If a username exists in the database
@@ -43,14 +42,14 @@ def login(username, password):
             print("Username not found.")
             return False
         
-        stored_hash = row[0]  # get the hash string from the DB
+        stored_hash = row[1]  # get the hash string from the DB
         # Compare entered password with stored hash by encoding both into bytes
         if bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8')):
             print("Login successful for:", username)
             cur.execute("SELECT * FROM users WHERE username = ?", (username,))
             row = cur.fetchone()
             global CURRENT_USER
-            CURRENT_USER = [row[0], row[1],row[3]]
+            CURRENT_USER = [row[0], row[1]]
             return True
         else:
             print("Password failed. Try Again...")
@@ -181,6 +180,7 @@ def change_book_status(book_id, status):
 def root():
     return jsonify(ok=True, message="API running")
 
+@app.route("/createaccount", methods=["POST"])
 def route_create_account():
     data = request.get_json(silent=True) or {}
     username = data.get("username")
@@ -197,17 +197,44 @@ def route_create_account():
     else:
         # if your create_account prints specific errors, you could surface them here
         return jsonify(ok=False, message="DB error (possibly duplicate username/email)"), 409
+
+@app.route("/loginaccount")
+def route_to_login():
+    if is_authenticated():
+        return jsonify(ok=False, message="Someone is already logged in"), 401
+    data = request.get_json(silent=True) or {}
+    username = data.get("username")
+    password = data.get("password")
     
+    if not username or not password:
+        return jsonify(ok=False, message="Missing username/password"), 400
+    ok = login(username, password)
+    if ok:
+        return jsonify(ok=True, message="Account found. Welcome!"), 200
+    else:
+        # if your create_account prints specific errors, you could surface them here
+        return jsonify(ok=False, message="Login Failed. Try Again!"), 409
+    
+@app.route("/logout")
+def route_to_logout():
+    if is_authenticated():
+        print(is_authenticated())
+        logout()
+        return jsonify(ok=True, message="Logged out successfully."), 200    
+    else:
+        return jsonify(ok=False, message="Logout failed."), 500
+      
 # @app.get("/books")
 # def route_booksearch():
-#     title = request.args.get("title")
-#     author = request.args.get("author")
+#     data = requests.get_json(silent = True) or {}   
+#     title = dataget("title")
+#     author = data.get("author")
 #     books = booksearch(title=title, author=author)
 #     return jsonify(ok=True, count=len(books), books=books)
 
 if __name__ == "__main__":
     app.run(debug=True)
-
+    
 
 
 # def 
