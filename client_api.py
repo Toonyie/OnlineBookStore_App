@@ -42,6 +42,7 @@ def addbook(title, author, price_buy, price_rent):
 #     author = data.get("author")
 #     books = booksearch(title=title, author=author)
 #     return jsonify(ok=True, count=len(books), books=books)
+
 def getbook(title = None, author = None):
     data = {
         "title":  title,

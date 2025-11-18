@@ -12,6 +12,8 @@ CURRENT_USER = None #Just what we will use to authenticate the user
 def is_authenticated():
     return CURRENT_USER is not None
 
+def current_user_is_manager():
+    return CURRENT_USER is not None and len(CURRENT_USER) >= 3 and CURRENT_USER[2] == "manager"
 
 #Create a user account
 def create_account(username, password, email, is_customer):
@@ -35,30 +37,30 @@ def login(username, password):
     conn = sqlite3.connect(DB_PATH)
     try:
         cur = conn.cursor()
-        cur.execute("SELECT username, password_hash FROM users WHERE username = ?", (username,))
+        cur.execute("SELECT user_id, username, password_hash, role FROM users WHERE username = ?", (username,))
         row = cur.fetchone()
 
         #If a username exists in the database
         if not row:
             print("Username not found.")
-            return False
-        
-        stored_hash = row[1]  # get the hash string from the DB
+            return False, None
+        user_id, db_username, stored_hash, role = row
+
         # Compare entered password with stored hash by encoding both into bytes
         if bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8')):
             print("Login successful for:", username)
             cur.execute("SELECT * FROM users WHERE username = ?", (username,))
             row = cur.fetchone()
             global CURRENT_USER
-            CURRENT_USER = [row[0], row[1]]
-            return True
+            CURRENT_USER = [user_id, db_username, role]
+            return True, role
         else:
             print("Password failed. Try Again...")
-            return False
+            return False, None
         
     except sqlite3.Error as e:
         print("Database error")
-        return False
+        return False, None
     finally:
         conn.close()
 
@@ -108,9 +110,13 @@ def booksearch(title = None, author = None):
 #         case "rent":
 #             for book in books:
 #         case "buy":
+
+
 #------------------------Manager Functions --------------
 #Manager views all orders
 def view_orders():
+    if not current_user_is_manager():
+        return jsonify(ok=False, message="Forbidden: manager only"), 403
     try:
         conn = sqlite3.connect(DB_PATH)
         curr = conn.cursor()
@@ -134,6 +140,8 @@ def view_orders():
         conn.close()
 #Manager updates order statuses
 def update_status(orderid, status):
+    if not current_user_is_manager():
+        return jsonify(ok=False, message="Forbidden: manager only"), 403
     try:
         conn = sqlite3.connect(DB_PATH)
         curr = conn.cursor()
@@ -149,6 +157,8 @@ def update_status(orderid, status):
 
 #Add book to book list
 def add_book(title, author, price_buy, price_rent):
+    if not current_user_is_manager():
+        return jsonify(ok=False, message="Forbidden: manager only"), 403
     try:
         conn = sqlite3.connect(DB_PATH)
         curr = conn.cursor()
@@ -209,9 +219,9 @@ def route_to_login():
     
     if not username or not password:
         return jsonify(ok=False, message="Missing username/password"), 400
-    ok = login(username, password)
+    ok, role = login(username, password)
     if ok:
-        return jsonify(ok=True, message="Account found. Welcome!"), 200
+        return jsonify(ok=True, message="Account found. Welcome!", role=role), 200
     else:
         # if your create_account prints specific errors, you could surface them here
         return jsonify(ok=False, message="Login Failed. Try Again!"), 409
@@ -226,8 +236,8 @@ def route_to_logout():
         return jsonify(ok=False, message="Logout failed."), 500
 
 @app.route("/addbook", methods = ["POST"])
-@auth_required 
-@require_roles("manager")    
+# @auth_required 
+# @require_roles("manager")    
 def addbook():
     data = request.get_json(silent=True) or {}
     title = data.get("title")
@@ -241,8 +251,8 @@ def addbook():
         return jsonify(ok=False, message="Failed to add book"), 409
 
 @app.get("/books")
-@auth_required
-@require_roles("manager")
+# @auth_required
+# @require_roles("manager")
 def route_booksearch():
     data = request.get_json(silent = True) or {}   
     title_input = data.get("title")

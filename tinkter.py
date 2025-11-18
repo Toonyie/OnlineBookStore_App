@@ -1,61 +1,58 @@
-import threading
+from tkinter import *
 import tkinter as tk
+from client_api import create_account, login_account
 from tkinter import messagebox
-from client_test import create_account
 
-class CreateAccountApp(tk.Tk):
-    def __init__(self):
-        super().__init__()
-        self.title("Create Account")
-        self.geometry("320x220")
+# widgets = GUI elements: buttons, textboxes, labels, etc
+# windows = pop up that holds these widgets
+window = Tk() #Create an instance of tk
 
-        tk.Label(self, text="Username").pack(anchor="w", padx=12, pady=(12,0))
-        self.username = tk.Entry(self); self.username.pack(fill="x", padx=12)
+window.rowconfigure(0, weight=1)
+window.columnconfigure(0, weight=1)
 
-        tk.Label(self, text="Email").pack(anchor="w", padx=12, pady=(8,0))
-        self.email = tk.Entry(self); self.email.pack(fill="x", padx=12)
+#Aesthetics of window
+window.geometry("500x500")
+window.title("Bookstore Application")
+window.rowconfigure(0, weight=1)
+window.columnconfigure(0, weight=1)
 
-        tk.Label(self, text="Password").pack(anchor="w", padx=12, pady=(8,0))
-        self.password = tk.Entry(self, show="*"); self.password.pack(fill="x", padx=12)
 
-        self.is_customer = tk.BooleanVar(value=True)
-        tk.Checkbutton(self, text="Is customer", variable=self.is_customer).pack(anchor="w", padx=12, pady=8)
+title_label = Label(window,text="Welcome to the Bookstore!",font=("Arial", 25, "bold"),bg="beige")
+title_label.pack(pady=50)
 
-        self.btn = tk.Button(self, text="Create Account", command=self.on_submit)
-        self.btn.pack(pady=10)
+#Frames that switches
+menu_frame   = tk.Frame(window, bg="beige")
+create_frame = tk.Frame(window, bg="lightblue")
+login_frame  = tk.Frame(window, bg="lightgreen")
 
-        self.status = tk.Label(self, text="", fg="gray")
-        self.status.pack(pady=(0,12))
+for frame in (menu_frame, create_frame, login_frame):
+    frame.grid(row=0, column=0, sticky="nsew")
 
-    def on_submit(self):
-        u = self.username.get().strip()
-        e = self.email.get().strip()
-        p = self.password.get().strip()
-        ic = self.is_customer.get()
+Label(menu_frame, text="Welcome to the Bookstore!",
+      font=("Arial", 25, "bold"), bg="beige").pack(pady=50)
 
-        if not u or not e or not p:
-            messagebox.showwarning("Missing fields", "Please fill username, email, and password.")
-            return
+#Just a helper function to show the frame when the corresponding button is clicked
+def show_frame(frame):
+    print(f"frame up,{frame}")
+    frame.tkraise()
 
-        self.btn.config(state="disabled")
-        self.status.config(text="Creating account...")
+def quit_app():
+    print("destroyed")
+    window.destroy()
 
-        def work():
-            try:
-                data = create_account(u, e, p, ic)
-                self.after(0, lambda: (
-                    messagebox.showinfo("Success", data.get("message","Account created")),
-                    self.status.config(text="Done"),
-                    self.btn.config(state="normal"),
-                ))
-            except Exception as ex:
-                self.after(0, lambda: (
-                    messagebox.showerror("Error", str(ex)),
-                    self.status.config(text="Failed"),
-                    self.btn.config(state="normal"),
-                ))
+#Home Screen
+create_account_button = Button(menu_frame, text="Create Account", font=("Arial",14), width = 20, height = 2, command = lambda:show_frame(create_frame))
+create_account_button.pack(pady=20)
 
-        threading.Thread(target=work, daemon=True).start()
+login_button = Button(menu_frame, text="Login", font=("Arial",14), width=20, height= 2, command=lambda:show_frame(login_frame))
+login_button.pack(pady=20)
 
-if __name__ == "__main__":
-    CreateAccountApp().mainloop()
+quit_button = Button(menu_frame, text="Quit", font=("Arial",14), width=20, height = 2, command=quit_app)
+quit_button.pack(pady=20)
+
+
+
+# Start on main menu
+show_frame(menu_frame)
+
+window.mainloop()
