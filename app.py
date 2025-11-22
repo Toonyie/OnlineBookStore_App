@@ -1,19 +1,31 @@
 # app.py
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, session
 import sqlite3
 from pathlib import Path
 import bcrypt
-
+import secrets
 app = Flask(__name__)
+SESSIONS = {}  
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "bookstore.db"
-CURRENT_USER = None #Just what we will use to authenticate the user
+
+def get_token_user():
+    """Return the user dict for the token in the Authorization header, or None."""
+    auth_header = request.headers.get("Authorization", "")
+    parts = auth_header.split()
+
+    # Expect: "Bearer <token>"
+    if len(parts) == 2 and parts[0].lower() == "bearer":
+        token = parts[1]
+        return SESSIONS.get(token)
+    return None
 
 def is_authenticated():
-    return CURRENT_USER is not None
+    return get_token_user() is not None
 
 def current_user_is_manager():
-    return CURRENT_USER is not None and len(CURRENT_USER) >= 3 and CURRENT_USER[2] == "manager"
+    user = get_token_user()
+    return user is not None and user.get("role") == "manager"
 
 #Create a user account
 def create_account(username, password, email, is_customer):
@@ -43,7 +55,7 @@ def login(username, password):
         #If a username exists in the database
         if not row:
             print("Username not found.")
-            return False, None
+            return None
         user_id, db_username, stored_hash, role = row
 
         # Compare entered password with stored hash by encoding both into bytes
@@ -51,23 +63,24 @@ def login(username, password):
             print("Login successful for:", username)
             cur.execute("SELECT * FROM users WHERE username = ?", (username,))
             row = cur.fetchone()
-            global CURRENT_USER
-            CURRENT_USER = [user_id, db_username, role]
-            return True, role
+            return{
+                    "id": user_id,
+                    "username": db_username,
+                    "role": role
+                    }
         else:
             print("Password failed. Try Again...")
-            return False, None
+            return None
         
     except sqlite3.Error as e:
         print("Database error")
-        return False, None
+        return None
     finally:
         conn.close()
 
 #Logging out
 def logout():
-    global CURRENT_USER
-    CURRENT_USER = None
+    SESSIONS = {}
     print("Logged out.")
     return True
 
@@ -115,7 +128,7 @@ def booksearch(title = None, author = None):
 #------------------------Manager Functions --------------
 #Manager views all orders
 def view_orders():
-    if not current_user_is_manager():
+    if not is_authenticated() or not current_user_is_manager():
         return jsonify(ok=False, message="Forbidden: manager only"), 403
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -138,9 +151,10 @@ def view_orders():
         return []
     finally:
         conn.close()
+
 #Manager updates order statuses
 def update_status(orderid, status):
-    if not current_user_is_manager():
+    if not is_authenticated() or not current_user_is_manager():
         return jsonify(ok=False, message="Forbidden: manager only"), 403
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -157,7 +171,7 @@ def update_status(orderid, status):
 
 #Add book to book list
 def add_book(title, author, price_buy, price_rent):
-    if not current_user_is_manager():
+    if not is_authenticated() or not current_user_is_manager():
         return jsonify(ok=False, message="Forbidden: manager only"), 403
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -198,7 +212,6 @@ def route_create_account():
     password = data.get("password")
     email    = data.get("email")
     is_customer = data.get("is_customer", True)
-
     if not username or not password or not email:
         return jsonify(ok=False, message="Missing username/password/email"), 400
 
@@ -211,34 +224,63 @@ def route_create_account():
 
 @app.route("/loginaccount")
 def route_to_login():
-    if is_authenticated():
-        return jsonify(ok=False, message="Someone is already logged in"), 401
+
     data = request.get_json(silent=True) or {}
     username = data.get("username")
     password = data.get("password")
     
     if not username or not password:
         return jsonify(ok=False, message="Missing username/password"), 400
-    ok, role = login(username, password)
-    if ok:
-        return jsonify(ok=True, message="Account found. Welcome!", role=role), 200
-    else:
-        # if your create_account prints specific errors, you could surface them here
-        return jsonify(ok=False, message="Login Failed. Try Again!"), 409
-    
+
+    user = login(username, password)
+    if not user:
+        return jsonify(ok=False, message="Invalid credentials"), 401
+
+    # check if this specific user already logged in
+    for token, sess_user in SESSIONS.items():
+        if sess_user["id"] == user["id"]:
+            return jsonify(
+                ok=False,
+                message="This user is already logged in."
+            ), 400
+        
+    token = secrets.token_urlsafe(32)
+    SESSIONS[token] = user
+    return jsonify(
+        ok=True,
+        message="Login successful",
+        role=user["role"],
+        token=token
+    ), 200
+
 @app.route("/logout")
 def route_to_logout():
-    if is_authenticated():
-        print(is_authenticated())
-        logout()
-        return jsonify(ok=True, message="Logged out successfully."), 200    
+    auth_header = request.headers.get("Authorization", "")
+    parts = auth_header.split()
+    #Splits the header into two parts. [Authorization, token]
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return jsonify(ok=False, message="Missing or invalid Authorization header"), 401
+
+    token = parts[1]
+    if token in SESSIONS:
+        del SESSIONS[token]
+        print("Logged out token:", token)
+        return jsonify(ok=True, message="Logged out successfully."), 200
     else:
-        return jsonify(ok=False, message="Logout failed."), 500
+        return jsonify(ok=False, message="Invalid token"), 401
 
 @app.route("/addbook", methods = ["POST"])
 # @auth_required 
 # @require_roles("manager")    
 def addbook():
+    user = get_token_user()
+    if not user:
+        return jsonify(ok=False, message="Auth required"), 401
+    if not current_user_is_manager():
+        return jsonify(ok=False, message="Forbidden: manager only"), 403
+    
+    
+    
     data = request.get_json(silent=True) or {}
     title = data.get("title")
     author = data.get("author")
@@ -251,9 +293,12 @@ def addbook():
         return jsonify(ok=False, message="Failed to add book"), 409
 
 @app.get("/books")
-# @auth_required
-# @require_roles("manager")
 def route_booksearch():
+    user = get_token_user()
+    if not user:
+        return jsonify(ok=False, message="Auth required"), 401
+    if current_user_is_manager():
+        return jsonify(ok=False, message="Forbidden: customer only"), 403
     data = request.get_json(silent = True) or {}   
     title_input = data.get("title")
     author_input = data.get("author")
@@ -263,6 +308,3 @@ def route_booksearch():
 if __name__ == "__main__":
     app.run(debug=True)
     
-
-
-# def 

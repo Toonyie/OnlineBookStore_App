@@ -1,6 +1,7 @@
 #Client Functions that the client_test.py and tinkter.py will use
 import requests
 BASE_URL = "http://127.0.0.1:5000"
+session_token = None
 
 def create_account(username, email, password, is_customer=True):
     data = {
@@ -14,16 +15,29 @@ def create_account(username, email, password, is_customer=True):
     return response.status_code, response.json()
 
 def login_account(username, password):
+    global session_token
     data = {
         "username": username,
         "password": password
     }
     response = requests.get(f"{BASE_URL}/loginaccount", json=data)
-    return response.status_code, response.json()
+    result = response.json()
+    
+    #Generate a token if a user has been found and isn't already logged in
+    if response.status_code == 200 and result.get("ok"):
+        session_token = result.get("token")
+        print("Saved session token:", session_token)
+
+    return response.status_code, result
 
 def logout():
-    response = requests.get(f"{BASE_URL}/logout")
-    return response.status_code, response.json()
+    global session_token
+    headers = {
+        "Authorization": f"Bearer {session_token}"
+    }
+    resp = requests.get(f"{BASE_URL}/logout", headers=headers)
+    session_token = None
+    return resp.status_code, resp.json()
 
 def addbook(title, author, price_buy, price_rent):
     data = {
@@ -35,20 +49,11 @@ def addbook(title, author, price_buy, price_rent):
     response = requests.post(f"{BASE_URL}/addbook", json=data)
     return response.status_code, response.json()
 
-# @app.get("/books")
-# def route_booksearch():
-#     data = request.get_json(silent = True) or {}   
-#     title = data.get("title")
-#     author = data.get("author")
-#     books = booksearch(title=title, author=author)
-#     return jsonify(ok=True, count=len(books), books=books)
-
 def getbook(title = None, author = None):
     data = {
         "title":  title,
         "author": author}  
     response = requests.get(f"{BASE_URL}/books", json=data)
-    
     try:
         data = response.json()  # Parse JSON data from the server
     except Exception:

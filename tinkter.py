@@ -1,6 +1,6 @@
 from tkinter import *
 import tkinter as tk
-from client_api import create_account, login_account
+from client_api import *
 from tkinter import messagebox
 
 # widgets = GUI elements: buttons, textboxes, labels, etc
@@ -19,9 +19,11 @@ window.columnconfigure(0, weight=1)
 menu_frame   = tk.Frame(window, bg="beige")
 create_frame = tk.Frame(window, bg="lightblue")
 login_frame  = tk.Frame(window, bg="lightgreen")
-main_menu = tk.Frame(window, bg="white")
+customer_menu = tk.Frame(window, bg="white")
+book_search = tk.Frame(window, bg="white")
+shopping_cart = tk.Frame(window, bg="white")
 
-for frame in (menu_frame, create_frame, login_frame,main_menu):
+for frame in (menu_frame, create_frame, login_frame,customer_menu):
     frame.grid(row=0, column=0, sticky="nsew")
 
 Label(menu_frame, text="Welcome to the Bookstore!",
@@ -36,19 +38,26 @@ def quit_app():
     print("destroyed")
     window.destroy()
 
+def back():
+    show_frame(menu_frame)
+    username.set("")
+    password.set("")
+    email.set("")
+    admin_password.set("")
+
 #Create account submit button helper function
 def on_submit_create():
     #Get the user inputs from entry
     username_input = username.get().strip()
     password_input = password.get().strip()
     email_input    = email.get().strip()
-
+    admin_input = admin_password.get().strip()
     if not username or not password or not email:
         messagebox.showerror("Error", "Please fill in all fields.")
         return
 
     try:
-        status, data = create_account(username_input, email_input, password_input, True)
+        status, data = create_account(username_input, email_input, password_input, False if admin_input == "seal" else True)
     except Exception as e:
         messagebox.showerror("Error", f"Network error: {e}")
         return
@@ -83,7 +92,7 @@ def login():
         # clear fields
         username.set("")
         password.set("")
-        show_frame(main_menu)
+        show_frame(customer_menu)
     else:
         message = data.get("message", "Login failed.")
         messagebox.showerror("Error", f"{message}\n(Status: {status})")
@@ -105,6 +114,7 @@ quit_button.pack(pady=20)
 username = tk.StringVar()
 password = tk.StringVar()
 email = tk.StringVar()
+admin_password = tk.StringVar()
 
 Label(create_frame, text="Create Account",
       font=("Arial", 25, "bold"), bg="lightblue").pack(pady=30)
@@ -130,7 +140,7 @@ email_input.grid(row=2, column=1, padx=5, pady=5)
 Submit = Button(create_frame,text="Submit", font=("Arial",25,), command = lambda:on_submit_create())
 Submit.pack()
 
-Back = Button(create_frame,text="Back", font=("Arial",25,), command = lambda:show_frame(menu_frame))
+Back = Button(create_frame,text="Back", font=("Arial",25,), command = lambda:back())
 Back.pack(pady=10)
 
 
@@ -153,9 +163,22 @@ password_input.grid(row=1, column=1, padx=5, pady=5)
 
 Login = Button(login_frame,text="Login", font=("Arial",25,), command = lambda:login())
 Login.pack()
-Back = Button(login_frame,text="Back", font=("Arial",25,), command = lambda:show_frame(menu_frame))
+Back = Button(login_frame,text="Back", font=("Arial",25,), command = lambda:back())
 Back.pack(pady=10)
 
-# Start on main menu
+Label(customer_menu, text="Main Menu", font=("Arial", 25, "bold")).pack(pady=30)
+option_frame = tk.Frame(customer_menu, bg="lightblue")
+Booksearch_button = Button(option_frame, text="Booksearch", font=("Arial",14), width = 20, height = 2, command = lambda:show_frame(create_frame))
+Cart_button = Button(option_frame, text="Cart", font=("Arial",14), width=20, height= 2, command=lambda:show_frame(login_frame))
+logout_button = Button(option_frame, text="Logout", font=("Arial",14), width=20, height = 2, command=logout())
+
+user_label.grid(row=0, column=0, padx=5, pady=5, sticky="e")
+user_input.grid(row=0, column=1, padx=5, pady=5)
+password_label.grid(row=1, column=0, padx=5, pady=5, sticky="e")
+password_input.grid(row=1, column=1, padx=5, pady=5)
+email_label.grid(row=2, column=0, padx=5, pady=5, sticky="e")
+email_input.grid(row=2, column=1, padx=5, pady=5)
+
+# Start on start page
 show_frame(menu_frame)
 window.mainloop()

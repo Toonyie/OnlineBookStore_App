@@ -12,7 +12,11 @@ if __name__ == "__main__":
             u = input("Username: ").strip()
             e = input("Email: ").strip()
             p = input("Password: ").strip()
-            status, data = create_account(u, e, p)
+            input = input("What is the owner's favorite animal: ").strip()
+            if input == "seal":
+                status, data = create_account(u, e, p, False)
+            else:
+                status, data = create_account(u, e, p)
             print(f"Status: {status}\nResponse: {data}\n")
 
         elif cmd == "login":
