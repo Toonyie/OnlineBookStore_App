@@ -9,6 +9,7 @@ SESSIONS = {}
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "bookstore.db"
 
+#This functions gets the session token (if any) to validate authorization
 def get_token_user():
     """Return the user dict for the token in the Authorization header, or None."""
     auth_header = request.headers.get("Authorization", "")
@@ -30,7 +31,9 @@ def current_user_is_manager():
 #Create a user account
 def create_account(username, password, email, is_customer):
     conn = sqlite3.connect(DB_PATH)
-    hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()) #Encode the password string into bits
+    hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()) #Encode the password string into btyes
+    print(hashed_pw)
+    print(hashed_pw.decode('utf-8'))
     try:
         cur = conn.cursor()
         #Here we will store the encrypted password by decoding it which returns a string
@@ -244,6 +247,7 @@ def route_to_login():
                 message="This user is already logged in."
             ), 400
         
+    #Otherwise create a session token using the secrets library and store it in memory
     token = secrets.token_urlsafe(32)
     SESSIONS[token] = user
     return jsonify(

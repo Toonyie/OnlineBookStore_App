@@ -1,6 +1,6 @@
 from tkinter import *
 import tkinter as tk
-from client_api import *
+from client_api import logout, login_account, create_account
 from tkinter import messagebox
 
 # widgets = GUI elements: buttons, textboxes, labels, etc
@@ -22,8 +22,11 @@ login_frame  = tk.Frame(window, bg="lightgreen")
 customer_menu = tk.Frame(window, bg="white")
 book_search = tk.Frame(window, bg="white")
 shopping_cart = tk.Frame(window, bg="white")
+manager_menu = tk.Frame(window, bg = "white")
+order_list = tk.Frame(window, bg = "white")
+edit_books = tk.Frame(window, bg="white")
 
-for frame in (menu_frame, create_frame, login_frame,customer_menu):
+for frame in (menu_frame, create_frame, login_frame,customer_menu, book_search, shopping_cart):
     frame.grid(row=0, column=0, sticky="nsew")
 
 Label(menu_frame, text="Welcome to the Bookstore!",
@@ -44,6 +47,11 @@ def back():
     password.set("")
     email.set("")
     admin_password.set("")
+
+
+def logout_session():
+    logout()
+    show_frame(menu_frame)
 
 #Create account submit button helper function
 def on_submit_create():
@@ -166,18 +174,32 @@ Login.pack()
 Back = Button(login_frame,text="Back", font=("Arial",25,), command = lambda:back())
 Back.pack(pady=10)
 
-Label(customer_menu, text="Main Menu", font=("Arial", 25, "bold")).pack(pady=30)
-option_frame = tk.Frame(customer_menu, bg="lightblue")
-Booksearch_button = Button(option_frame, text="Booksearch", font=("Arial",14), width = 20, height = 2, command = lambda:show_frame(create_frame))
-Cart_button = Button(option_frame, text="Cart", font=("Arial",14), width=20, height= 2, command=lambda:show_frame(login_frame))
-logout_button = Button(option_frame, text="Logout", font=("Arial",14), width=20, height = 2, command=logout())
 
-user_label.grid(row=0, column=0, padx=5, pady=5, sticky="e")
-user_input.grid(row=0, column=1, padx=5, pady=5)
-password_label.grid(row=1, column=0, padx=5, pady=5, sticky="e")
-password_input.grid(row=1, column=1, padx=5, pady=5)
-email_label.grid(row=2, column=0, padx=5, pady=5, sticky="e")
-email_input.grid(row=2, column=1, padx=5, pady=5)
+
+#Customer Menu Screen
+Label(customer_menu, text="Main Menu", bg = "white", font=("Arial", 25, "bold")).pack(pady=50)
+option_frame = tk.Frame(customer_menu, bg="white")
+option_frame.pack(pady=10)  
+
+Booksearch_button = Button(option_frame, text="Booksearch", font=("Arial",14), width = 20, height = 2, command = lambda:show_frame(book_search))
+Cart_button = Button(option_frame, text="Cart", font=("Arial",14), width=20, height= 2, command=lambda:show_frame(shopping_cart))
+logout_button = Button(option_frame, text="Logout", font=("Arial",14), width=20, height = 2, command=lambda:logout_session())
+
+Booksearch_button.grid(row=0, column=0, padx=5, pady=5)
+Cart_button.grid(row=1, column=0, padx=5, pady=5)
+logout_button.grid(row=2, column=0, padx=5, pady=5)
+
+#Booksearch Screen
+Label(book_search, text="Search books!").pack(pady=30)
+Back = Button(book_search,text="Back", font=("Arial",25,), command = lambda:show_frame(customer_menu))
+Back.pack(pady=10)
+
+#ShoppingCart
+Label(shopping_cart, text= "Cart").pack(pady=30)
+Back = Button(shopping_cart,text="Back", font=("Arial",25,), command = lambda:show_frame(customer_menu))
+Back.pack(pady=10)
+
+
 
 # Start on start page
 show_frame(menu_frame)
