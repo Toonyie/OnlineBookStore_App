@@ -3,6 +3,12 @@ import requests
 BASE_URL = "http://127.0.0.1:5000"
 session_token = None
 
+#This is manly to get the get_token function on app.py to work
+def auth_headers():
+    if session_token:
+        return {"Authorization": f"Bearer {session_token}"}
+    return {}
+
 def create_account(username, email, password, is_customer=True):
     data = {
         "username": username,
@@ -52,7 +58,9 @@ def addbook(title, author, price_buy, price_rent):
 def getbook(title = None, author = None):
     data = {
         "title":  title,
-        "author": author}  
+        "author": author,
+        headers=auth_headers()
+        }  
     response = requests.get(f"{BASE_URL}/books", json=data)
     try:
         data = response.json()  # Parse JSON data from the server
@@ -67,4 +75,3 @@ def getbook(title = None, author = None):
     # Return (status code, number of books, book list)
     return response.status_code, count, books
         
-    

@@ -11,10 +11,10 @@ DB_PATH = BASE_DIR / "bookstore.db"
 
 #This functions gets the session token (if any) to validate authorization
 def get_token_user():
-    """Return the user dict for the token in the Authorization header, or None."""
+    "Return the user dict for the token in the Authorization header, or None."
     auth_header = request.headers.get("Authorization", "")
     parts = auth_header.split()
-
+    print(parts)
     # Expect: "Bearer <token>"
     if len(parts) == 2 and parts[0].lower() == "bearer":
         token = parts[1]
@@ -81,9 +81,9 @@ def login(username, password):
     finally:
         conn.close()
 
-#Logging out
+#Logging out by clearing the Sessions token
 def logout():
-    SESSIONS = {}
+    SESSIONS.clear()
     print("Logged out.")
     return True
 
@@ -119,14 +119,6 @@ def booksearch(title = None, author = None):
     finally:
         conn.close()
     
-# def add_to_cart(books, type):
-#     conn = sqlite3.connect(DB_PATH)
-#     cols = 
-#     match (type):
-#         case "rent":
-#             for book in books:
-#         case "buy":
-
 
 #------------------------Manager Functions --------------
 #Manager views all orders
@@ -250,6 +242,7 @@ def route_to_login():
     #Otherwise create a session token using the secrets library and store it in memory
     token = secrets.token_urlsafe(32)
     SESSIONS[token] = user
+    print(SESSIONS)
     return jsonify(
         ok=True,
         message="Login successful",
@@ -300,6 +293,7 @@ def addbook():
 def route_booksearch():
     user = get_token_user()
     if not user:
+        print(user)
         return jsonify(ok=False, message="Auth required"), 401
     if current_user_is_manager():
         return jsonify(ok=False, message="Forbidden: customer only"), 403
