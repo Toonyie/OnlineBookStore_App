@@ -1,7 +1,8 @@
 from tkinter import *
 import tkinter as tk
-from client_api import logout, login_account, create_account
+from client_api import logout, login_account, create_account, getbook
 from tkinter import messagebox
+from book_results import BookResults 
 
 # widgets = GUI elements: buttons, textboxes, labels, etc
 # windows = pop up that holds these widgets
@@ -14,6 +15,7 @@ window.geometry("500x500")
 window.title("Bookstore Application")
 window.rowconfigure(0, weight=1)
 window.columnconfigure(0, weight=1)
+window.resizable(False, False) # no resizing in x or y
 
 #Frames that switches
 menu_frame   = tk.Frame(window, bg="beige")
@@ -25,8 +27,10 @@ shopping_cart = tk.Frame(window, bg="white")
 manager_menu = tk.Frame(window, bg = "white")
 order_list = tk.Frame(window, bg = "white")
 edit_books = tk.Frame(window, bg="white")
+cart = []  
 
-for frame in (menu_frame, create_frame, login_frame,customer_menu, book_search, shopping_cart):
+
+for frame in (menu_frame, create_frame, login_frame,customer_menu, book_search, shopping_cart, order_list, edit_books):
     frame.grid(row=0, column=0, sticky="nsew")
 
 Label(menu_frame, text="Welcome to the Bookstore!",
@@ -47,6 +51,8 @@ def back():
     password.set("")
     email.set("")
     admin_password.set("")
+    title.set("")
+    author.set("")
 
 
 def logout_session():
@@ -105,6 +111,22 @@ def login():
         message = data.get("message", "Login failed.")
         messagebox.showerror("Error", f"{message}\n(Status: {status})")
 
+#Adding to card by book id and the order type
+
+
+def add_to_cart(book, order_type):
+    cart.append({"book_id": book["book_id"], "type": order_type})
+    messagebox.showinfo("Cart", f'Added "{book["title"]}" to cart as {order_type}.')
+
+def run_search():
+    title_entry = title.get().strip()
+    author_entry = author.get().strip()
+
+    status, count, books = getbook(title_entry, author_entry)
+    if status == 200:
+        results_widget.set_books(books)  # ✅ push results into the widget
+    else:
+        print("Search failed", status)
 
 #Main menu
 create_account_button = Button(menu_frame, text="Create Account", font=("Arial",14), width = 20, height = 2, command = lambda:show_frame(create_frame))
@@ -189,12 +211,42 @@ Booksearch_button.grid(row=0, column=0, padx=5, pady=5)
 Cart_button.grid(row=1, column=0, padx=5, pady=5)
 logout_button.grid(row=2, column=0, padx=5, pady=5)
 
+
+
+
 #Booksearch Screen
-Label(book_search, text="Search books!").pack(pady=30)
+title = tk.StringVar()
+author = tk.StringVar()
+
+
+Label(book_search, text="Search books!", bg="white", font=("Arial", 25, "bold")).pack(pady=10)
+Label(book_search, text="Search Book with Title and/or Author", bg="white", font=("Arial", 10, "bold")).pack(pady=10)
+option_frame1 = tk.Frame(book_search)
+option_frame1.pack(pady=10)  
+Title_label = tk.Label(option_frame1, text = "Title", font = ("Arial",10,"bold"))
+Title_input = Entry(option_frame1, textvariable = title, font=("Arial",10))
+Author_label = tk.Label(option_frame1, text = "Author", font = ("Arial",10,"bold"))
+Author_input = Entry(option_frame1, textvariable = author, font=("Arial",10))
+
+Search = Button(book_search,text="Search", font=("Arial",25,), command = lambda:run_search())
+Search.pack(pady=8)
+
+results_widget = BookResults(book_search, add_to_cart)
+results_widget.pack(pady=5, fill="x")   # smaller + centered
+
 Back = Button(book_search,text="Back", font=("Arial",25,), command = lambda:show_frame(customer_menu))
 Back.pack(pady=10)
 
+Title_label.grid(row=0, column=0, padx=5, pady=5, sticky="e")
+Title_input.grid(row=0, column=1, padx=5, pady=5)
+Author_label.grid(row=1, column=0, padx=5, pady=5, sticky="e")
+Author_input.grid(row=1, column=1, padx=5, pady=5)
+
+
+
+
 #ShoppingCart
+
 Label(shopping_cart, text= "Cart").pack(pady=30)
 Back = Button(shopping_cart,text="Back", font=("Arial",25,), command = lambda:show_frame(customer_menu))
 Back.pack(pady=10)

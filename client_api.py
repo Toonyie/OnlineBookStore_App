@@ -52,16 +52,17 @@ def addbook(title, author, price_buy, price_rent):
         "price_buy": price_buy,
         "price_rent": price_rent
     }
-    response = requests.post(f"{BASE_URL}/addbook", json=data)
+    response = requests.post(
+        f"{BASE_URL}/addbook", json=data, headers=auth_headers()
+    )
     return response.status_code, response.json()
 
 def getbook(title = None, author = None):
     data = {
         "title":  title,
         "author": author,
-        headers=auth_headers()
         }  
-    response = requests.get(f"{BASE_URL}/books", json=data)
+    response = requests.get(f"{BASE_URL}/books", json=data, headers=auth_headers())
     try:
         data = response.json()  # Parse JSON data from the server
     except Exception:

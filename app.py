@@ -149,8 +149,6 @@ def view_orders():
 
 #Manager updates order statuses
 def update_status(orderid, status):
-    if not is_authenticated() or not current_user_is_manager():
-        return jsonify(ok=False, message="Forbidden: manager only"), 403
     try:
         conn = sqlite3.connect(DB_PATH)
         curr = conn.cursor()
@@ -166,8 +164,6 @@ def update_status(orderid, status):
 
 #Add book to book list
 def add_book(title, author, price_buy, price_rent):
-    if not is_authenticated() or not current_user_is_manager():
-        return jsonify(ok=False, message="Forbidden: manager only"), 403
     try:
         conn = sqlite3.connect(DB_PATH)
         curr = conn.cursor()
@@ -257,7 +253,6 @@ def route_to_logout():
     #Splits the header into two parts. [Authorization, token]
     if len(parts) != 2 or parts[0].lower() != "bearer":
         return jsonify(ok=False, message="Missing or invalid Authorization header"), 401
-
     token = parts[1]
     if token in SESSIONS:
         del SESSIONS[token]
@@ -267,18 +262,14 @@ def route_to_logout():
         return jsonify(ok=False, message="Invalid token"), 401
 
 @app.route("/addbook", methods = ["POST"])
-# @auth_required 
-# @require_roles("manager")    
 def addbook():
-    user = get_token_user()
+    user = get_token_user() #Confirm Authentication
     if not user:
         return jsonify(ok=False, message="Auth required"), 401
     if not current_user_is_manager():
         return jsonify(ok=False, message="Forbidden: manager only"), 403
     
-    
-    
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True) or {} #Get the data from the json from client then input it into the addbook function
     title = data.get("title")
     author = data.get("author")
     price_buy = data.get("price_buy")
@@ -293,9 +284,8 @@ def addbook():
 def route_booksearch():
     user = get_token_user()
     if not user:
-        print(user)
         return jsonify(ok=False, message="Auth required"), 401
-    if current_user_is_manager():
+    if user["role"] == "manager":
         return jsonify(ok=False, message="Forbidden: customer only"), 403
     data = request.get_json(silent = True) or {}   
     title_input = data.get("title")
