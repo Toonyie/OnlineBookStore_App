@@ -90,7 +90,7 @@ def logout():
 #Searching for books based on title and author
 def booksearch(title = None, author = None):
     conn = sqlite3.connect(DB_PATH)
-    cols = "book_id, title, author, price_buy, price_rent, active"
+    cols = "book_id, title, author, price_buy, price_rent, quantity"
     try: #Depending on the request, we get all the books and append them to a results list
         curr = conn.cursor()
         if title and not author:
@@ -108,7 +108,7 @@ def booksearch(title = None, author = None):
                 "author": row[2],
                 "price_buy": row[3],
                 "price_rent": row[4],
-                "active": row[5]
+                "quantity": row[5]
             })
         return results
     
@@ -119,7 +119,87 @@ def booksearch(title = None, author = None):
     finally:
         conn.close()
     
+#Helper function for checkout
+def checkout(user, cart):
+    conn = sqlite3.connect(DB_PATH)
+    counts = {}
 
+    try:
+        curr = conn.cursor()
+
+        # 1) Count how many of each book_id are being ordered
+        for item in cart:
+            book_id = item.get("book_id")
+            otype   = item.get("type")
+            if book_id is None or otype not in ("buy", "rent"):
+                return jsonify(ok=False, message="Invalid cart item"), 400
+            counts[book_id] = counts.get(book_id, 0) + 1
+
+        # 2) Check stock for all books
+        for book_id, qty_needed in counts.items():
+            curr.execute("SELECT quantity FROM books WHERE book_id = ?", (book_id,))
+            row = curr.fetchone()
+            if not row:
+                return jsonify(ok=False, message=f"Book {book_id} not found"), 404
+            if row[0] < qty_needed:
+                return jsonify(ok=False, message=f"Not enough stock for book {book_id}"), 409
+
+        # 3) Create order
+        curr.execute(
+            "INSERT INTO orders (user_id, status, payed, created_at) "
+            "VALUES (?, ?, ?, datetime('now'))",
+            (user["id"], "Pending", 0)
+        )
+        order_id = curr.lastrowid
+
+        # 4) Insert order items + decrement quantity
+        for item in cart:
+            b_id  = item["book_id"]
+            otype = item["type"]
+
+            # get correct price for this item
+            curr.execute("SELECT price_buy, price_rent FROM books WHERE book_id = ?", (b_id,))
+            row = curr.fetchone()
+            if not row:
+                return jsonify(ok=False, message=f"Book {b_id} not found"), 404
+
+            price_buy, price_rent = row
+            unit_price = price_buy if otype == "buy" else price_rent
+
+            # insert line item
+            curr.execute(
+                "INSERT INTO order_items (order_id, book_id, item_type, unit_price, quantity) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (order_id, b_id, otype, unit_price, 1)
+            )
+
+            # decrement stock
+            curr.execute(
+                "UPDATE books SET quantity = quantity - 1 WHERE book_id = ?",
+                (b_id,)
+            )
+
+        # 5) Set order status based on cart contents
+        has_rent = any(item["type"] == "rent" for item in cart)
+        new_status = "Pending Rental Payment" if has_rent else "Pending Purchase Payment"
+
+        curr.execute(
+            "UPDATE orders SET status = ? WHERE order_id = ?",
+            (new_status, order_id)
+        )
+
+        conn.commit()
+        return jsonify(ok=True, message="Order placed!", order_id=order_id), 201
+
+    except sqlite3.Error as e:
+        conn.rollback()
+        print("Database error:", e)
+        return jsonify(ok=False, message=str(e)), 500
+
+    finally:
+        conn.close()
+
+        
 #------------------------Manager Functions --------------
 #Manager views all orders
 def view_orders():
@@ -163,11 +243,11 @@ def update_status(orderid, status):
         conn.close()
 
 #Add book to book list
-def add_book(title, author, price_buy, price_rent):
+def add_book(title, author, price_buy, price_rent, quantity = 1):
     try:
         conn = sqlite3.connect(DB_PATH)
         curr = conn.cursor()
-        curr.execute(f"INSERT INTO books (title, author, price_buy, price_rent) VALUES (?, ?, ?, ?)", (title, author, float(price_buy), float(price_rent)))
+        curr.execute(f"INSERT INTO books (title, author, price_buy, price_rent) VALUES (?, ?, ?, ?)", (title, author, float(price_buy), float(price_rent), int(quantity)))
         conn.commit()
         print(f"Added {title} from {author} with price {price_buy} for buying and price {price_rent} for rent")
         return True
@@ -182,7 +262,7 @@ def change_book_status(book_id, status):
     try:
         conn = sqlite3.connect(DB_PATH)
         curr = conn.cursor()
-        curr.execute(f"UPDATE books SET active = ? WHERE book_id = ?", (status, book_id,))
+        curr.execute(f"UPDATE books SET quantity = ? WHERE book_id = ?", (status, book_id,))
         conn.commit()
         print(f"Changed {book_id} status to {status}")
         return True
@@ -192,9 +272,11 @@ def change_book_status(book_id, status):
     finally:
         conn.close()
     
+    
 @app.route("/", methods=["GET"])
 def root():
     return jsonify(ok=True, message="API running")
+
 
 @app.route("/createaccount", methods=["POST"])
 def route_create_account():
@@ -212,6 +294,7 @@ def route_create_account():
     else:
         # if your create_account prints specific errors, you could surface them here
         return jsonify(ok=False, message="DB error (possibly duplicate username/email)"), 409
+
 
 @app.route("/loginaccount")
 def route_to_login():
@@ -246,6 +329,7 @@ def route_to_login():
         token=token
     ), 200
 
+
 @app.route("/logout")
 def route_to_logout():
     auth_header = request.headers.get("Authorization", "")
@@ -260,6 +344,7 @@ def route_to_logout():
         return jsonify(ok=True, message="Logged out successfully."), 200
     else:
         return jsonify(ok=False, message="Invalid token"), 401
+
 
 @app.route("/addbook", methods = ["POST"])
 def addbook():
@@ -280,6 +365,7 @@ def addbook():
     else:
         return jsonify(ok=False, message="Failed to add book"), 409
 
+
 @app.get("/books")
 def route_booksearch():
     user = get_token_user()
@@ -287,12 +373,28 @@ def route_booksearch():
         return jsonify(ok=False, message="Auth required"), 401
     if user["role"] == "manager":
         return jsonify(ok=False, message="Forbidden: customer only"), 403
+    
     data = request.get_json(silent = True) or {}   
     title_input = data.get("title")
     author_input = data.get("author")
     books = booksearch(title=title_input, author=author_input)
     return jsonify(ok=True, count=len(books), books=books), 200
 
+
+@app.route("/checkout", methods=["POST"])
+def route_checkout():
+    user = get_token_user()
+    if not user:
+        return jsonify(ok=False, message="Auth required"), 401
+    if user["role"] != "customer" :
+        return jsonify(ok=False, message="Forbidden: customer only"), 40
+    
+    data = request.get_json(silent = True) or {}   
+    cart = data.get("cart", [])
+    
+    if not cart:
+        return jsonify(ok=False, message="Cart is empty"), 400
+    checkout(user, cart)
 if __name__ == "__main__":
     app.run(debug=True)
     

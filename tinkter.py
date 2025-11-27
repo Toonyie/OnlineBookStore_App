@@ -1,6 +1,6 @@
 from tkinter import *
 import tkinter as tk
-from client_api import logout, login_account, create_account, getbook
+from client_api import logout, login_account, create_account, getbook, checkout
 from tkinter import messagebox
 from book_results import BookResults 
 
@@ -112,21 +112,47 @@ def login():
         messagebox.showerror("Error", f"{message}\n(Status: {status})")
 
 #Adding to card by book id and the order type
-
-
 def add_to_cart(book, order_type):
+    # Check how many of this book are already in cart (buy+rent combined)
+    already_in_cart = sum(
+        1 for item in cart if item["book_id"] == book["book_id"]
+    )
+
+    if already_in_cart >= book["quantity"]:
+        messagebox.showwarning(
+            "Out of stock",
+            f'Sorry, only {book["quantity"]} copy/copies of "{book["title"]}" available.'
+        )
+        return
+    
+    #Otherwise add book to cart
     cart.append({"book_id": book["book_id"], "type": order_type})
     messagebox.showinfo("Cart", f'Added "{book["title"]}" to cart as {order_type}.')
+    
 
 def run_search():
     title_entry = title.get().strip()
     author_entry = author.get().strip()
 
-    status, count, books = getbook(title_entry, author_entry)
+    status, books = getbook(title_entry, author_entry)
     if status == 200:
-        results_widget.set_books(books)  # ✅ push results into the widget
+        results_widget.set_books(books)  # push results into the widget
     else:
         print("Search failed", status)
+
+
+def on_checkout():
+    if not cart:
+        messagebox.showwarning("Cart", "Cart is empty!")
+        return
+
+    status, data = checkout(cart)
+    if status == 201 and data.get("ok"):
+        messagebox.showinfo("Success", f'Order placed! Order ID: {data["order_id"]}')
+        cart.clear()
+        show_frame(customer_menu)
+    else:
+        messagebox.showerror("Error", data.get("message", "Checkout failed"))
 
 #Main menu
 create_account_button = Button(menu_frame, text="Create Account", font=("Arial",14), width = 20, height = 2, command = lambda:show_frame(create_frame))
@@ -218,7 +244,6 @@ logout_button.grid(row=2, column=0, padx=5, pady=5)
 title = tk.StringVar()
 author = tk.StringVar()
 
-
 Label(book_search, text="Search books!", bg="white", font=("Arial", 25, "bold")).pack(pady=10)
 Label(book_search, text="Search Book with Title and/or Author", bg="white", font=("Arial", 10, "bold")).pack(pady=10)
 option_frame1 = tk.Frame(book_search)
@@ -248,6 +273,7 @@ Author_input.grid(row=1, column=1, padx=5, pady=5)
 #ShoppingCart
 
 Label(shopping_cart, text= "Cart").pack(pady=30)
+Button(shopping_cart, text="Checkout", font=("Arial", 18), command=on_checkout()).pack(pady=10)
 Back = Button(shopping_cart,text="Back", font=("Arial",25,), command = lambda:show_frame(customer_menu))
 Back.pack(pady=10)
 

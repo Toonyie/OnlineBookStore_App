@@ -76,3 +76,8 @@ def getbook(title = None, author = None):
     # Return (status code, number of books, book list)
     return response.status_code, count, books
         
+def checkout(cart):
+    headers = {"Authorization": f"Bearer {session_token}"}
+    data = {"cart": cart}
+    resp = requests.post(f"{BASE_URL}/checkout", json=data, headers=headers)
+    return resp.status_code, resp.json()
