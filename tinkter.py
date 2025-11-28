@@ -30,7 +30,7 @@ edit_books = tk.Frame(window, bg="white")
 cart = []  
 
 
-for frame in (menu_frame, create_frame, login_frame,customer_menu, book_search, shopping_cart, order_list, edit_books):
+for frame in (menu_frame, create_frame, login_frame,customer_menu, book_search, shopping_cart, order_list, edit_books,manager_menu):
     frame.grid(row=0, column=0, sticky="nsew")
 
 Label(menu_frame, text="Welcome to the Bookstore!",
@@ -91,7 +91,8 @@ def login():
     #Get the user inputs from entry
     username_input = username.get().strip()
     password_input = password.get().strip()
-
+    want_manager = is_manager_var.get()
+    
     if not username or not password:
         messagebox.showerror("Error", "Please fill in all fields.")
         return
@@ -102,18 +103,27 @@ def login():
         return
     
     if data.get("ok") and 200 <= status < 300:
+        role = data.get("role")  # server returns "customer" or "manager"
+        #Check if manager role is found
+        if want_manager and role != "manager":
+            messagebox.showerror("Error", "This account is not a manager.")
+            return
+
         messagebox.showinfo("Success", data.get("message", "Login Successful!"))
         # clear fields
         username.set("")
         password.set("")
-        show_frame(customer_menu)
+        print(role)
+        if role == "manager":
+            show_frame(manager_menu)
+        else:
+            show_frame(customer_menu)
     else:
         message = data.get("message", "Login failed.")
         messagebox.showerror("Error", f"{message}\n(Status: {status})")
 
 #Adding to card by book id and the order type
 def add_to_cart(book, order_type):
-    # Check how many of this book are already in cart (buy+rent combined)
     already_in_cart = sum(
         1 for item in cart if item["book_id"] == book["book_id"]
     )
@@ -124,21 +134,32 @@ def add_to_cart(book, order_type):
             f'Sorry, only {book["quantity"]} copy/copies of "{book["title"]}" available.'
         )
         return
-    
-    #Otherwise add book to cart
-    cart.append({"book_id": book["book_id"], "type": order_type})
+
+    cart.append({
+        "book_id": book["book_id"],
+        "title": book["title"],
+        "author": book["author"],
+        "price_buy": book["price_buy"],
+        "price_rent": book["price_rent"],
+        "type": order_type
+    })
+
+    refresh_cart()  #update cart UI whenever you add
     messagebox.showinfo("Cart", f'Added "{book["title"]}" to cart as {order_type}.')
+
     
 
 def run_search():
     title_entry = title.get().strip()
     author_entry = author.get().strip()
 
-    status, books = getbook(title_entry, author_entry)
+    status, count, books = getbook(title_entry, author_entry)
     if status == 200:
-        results_widget.set_books(books)  # push results into the widget
+        results_widget.set_books(books)
+        # optional: show count somewhere
+        print("Found", count, "books")
     else:
-        print("Search failed", status)
+        messagebox.showerror("Search failed", f"Status: {status}")
 
 
 def on_checkout():
@@ -149,10 +170,79 @@ def on_checkout():
     status, data = checkout(cart)
     if status == 201 and data.get("ok"):
         messagebox.showinfo("Success", f'Order placed! Order ID: {data["order_id"]}')
+        refresh_cart()
         cart.clear()
         show_frame(customer_menu)
     else:
         messagebox.showerror("Error", data.get("message", "Checkout failed"))
+
+#cart display
+def refresh_cart():
+    # clear old widgets
+    for w in cart_list_frame.winfo_children():
+        w.destroy()
+
+    if not cart:
+        tk.Label(cart_list_frame, text="Cart is empty.", bg="white",
+                 font=("Arial", 12)).pack()
+        return
+
+    # group cart items by (book_id, type)
+    grouped = {}
+    for item in cart:
+        key = (item["book_id"], item["type"])
+        grouped[key] = grouped.get(key, 0) + 1
+
+    for (book_id, otype), qty in grouped.items():
+        sample = next(
+            i for i in cart
+            if i["book_id"] == book_id and i["type"] == otype
+        )
+
+        unit_price = sample["price_buy"] if otype == "buy" else sample["price_rent"]
+        subtotal = unit_price * qty
+
+        # Outer card for one cart item
+        card = tk.Frame(cart_list_frame, bg="white", bd=1, relief="solid")
+        card.pack(fill="x", padx=8, pady=6)
+
+        # --- line 1: title + author
+        tk.Label(
+            card, text=sample["title"],
+            bg="white", font=("Arial", 11, "bold"),
+            anchor="w"
+        ).pack(fill="x", padx=6, pady=(4, 0))
+
+        tk.Label(
+            card, text=f"by {sample['author']}",
+            bg="white", font=("Arial", 10),
+            anchor="w"
+        ).pack(fill="x", padx=6)
+
+        # --- line 2: compact details row
+        details = tk.Frame(card, bg="white")
+        details.pack(fill="x", padx=6, pady=4)
+
+        tk.Label(details, text=otype.upper(), bg="white", width=6, anchor="w").grid(row=0, column=0, sticky="w")
+        tk.Label(details, text=f"x{qty}", bg="white", width=4, anchor="w").grid(row=0, column=1, sticky="w")
+        tk.Label(details, text=f"${unit_price:.2f} ea", bg="white", width=10, anchor="w").grid(row=0, column=2, sticky="w")
+        tk.Label(details, text=f"= ${subtotal:.2f}", bg="white", width=10, anchor="w").grid(row=0, column=3, sticky="w")
+
+        tk.Button(
+            details, text="Remove 1",
+            command=lambda bid=book_id, t=otype: remove_one(bid, t),
+            width=8
+        ).grid(row=0, column=4, padx=(10, 0), sticky="e")
+
+        # make the prices stretch left nicely
+        details.columnconfigure(3, weight=1)
+
+def remove_one(book_id, order_type):
+    for i, item in enumerate(cart):
+        if item["book_id"] == book_id and item["type"] == order_type:
+            cart.pop(i)
+            break
+    refresh_cart()
 
 #Main menu
 create_account_button = Button(menu_frame, text="Create Account", font=("Arial",14), width = 20, height = 2, command = lambda:show_frame(create_frame))
@@ -217,6 +307,10 @@ user_input.grid(row=0, column=1, padx=5, pady=5)
 password_label.grid(row=1, column=0, padx=5, pady=5, sticky="e")
 password_input.grid(row=1, column=1, padx=5, pady=5)
 
+#Manager checkbox
+is_manager_var = tk.BooleanVar(value=False)
+tk.Checkbutton(loginform_frame,text="Login as manager",variable=is_manager_var,bg="lightblue").grid(row=2, column=0, columnspan=2, pady=8)
+
 Login = Button(login_frame,text="Login", font=("Arial",25,), command = lambda:login())
 Login.pack()
 Back = Button(login_frame,text="Back", font=("Arial",25,), command = lambda:back())
@@ -236,9 +330,6 @@ logout_button = Button(option_frame, text="Logout", font=("Arial",14), width=20,
 Booksearch_button.grid(row=0, column=0, padx=5, pady=5)
 Cart_button.grid(row=1, column=0, padx=5, pady=5)
 logout_button.grid(row=2, column=0, padx=5, pady=5)
-
-
-
 
 #Booksearch Screen
 title = tk.StringVar()
@@ -267,16 +358,41 @@ Title_input.grid(row=0, column=1, padx=5, pady=5)
 Author_label.grid(row=1, column=0, padx=5, pady=5, sticky="e")
 Author_input.grid(row=1, column=1, padx=5, pady=5)
 
-
-
-
 #ShoppingCart
-
 Label(shopping_cart, text= "Cart").pack(pady=30)
-Button(shopping_cart, text="Checkout", font=("Arial", 18), command=on_checkout()).pack(pady=10)
+cart_list_frame = tk.Frame(shopping_cart, bg="white")
+cart_list_frame.pack(pady=10, fill="both", expand=True)
+Button(shopping_cart, text="Checkout", font=("Arial", 18), command= lambda:on_checkout()).pack(pady=10)
 Back = Button(shopping_cart,text="Back", font=("Arial",25,), command = lambda:show_frame(customer_menu))
 Back.pack(pady=10)
 
+
+
+
+#Manager Menu
+Label(manager_menu, text="Main Menu", bg = "white", font=("Arial", 25, "bold")).pack(pady=50)
+option_frame2 = tk.Frame(manager_menu, bg="white")
+option_frame2.pack(pady=10)  
+
+View_Orders_button = Button(option_frame2, text="View Orders", font=("Arial",14), width = 20, height = 2, command = lambda:show_frame(order_list))
+edit_books_button = Button(option_frame2, text="Update Book Information", font=("Arial",14), width=20, height= 2, command=lambda:show_frame(edit_books))
+logout_button = Button(option_frame2, text="Logout", font=("Arial",14), width=20, height = 2, command=lambda:logout_session())
+
+View_Orders_button.grid(row=0, column=0, padx=5, pady=5)
+edit_books_button.grid(row=1, column=0, padx=5, pady=5)
+logout_button.grid(row=2, column=0, padx=5, pady=5)
+
+#Orderlist button
+Label(order_list, text= "All Orders").pack(pady=30)
+
+Back = Button(order_list,text="Back", font=("Arial",25,), command = lambda:show_frame(manager_menu))
+Back.pack(pady=10)
+
+#Edit Books
+Label(edit_books, text= "All Orders").pack(pady=30)
+
+Back = Button(edit_books,text="Back", font=("Arial",25,), command = lambda:show_frame(manager_menu))
+Back.pack(pady=10)
 
 
 # Start on start page

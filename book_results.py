@@ -1,5 +1,4 @@
 #This file is mainly to give the search results after a user searches for a book
-import tkinter as tk
 from tkinter import ttk
 
 PAGE_SIZE = 5

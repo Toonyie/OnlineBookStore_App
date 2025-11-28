@@ -384,6 +384,7 @@ def route_booksearch():
 @app.route("/checkout", methods=["POST"])
 def route_checkout():
     user = get_token_user()
+    #Check authentication
     if not user:
         return jsonify(ok=False, message="Auth required"), 401
     if user["role"] != "customer" :
@@ -393,8 +394,12 @@ def route_checkout():
     cart = data.get("cart", [])
     
     if not cart:
-        return jsonify(ok=False, message="Cart is empty"), 400
-    checkout(user, cart)
+            return jsonify(ok=False, message="Cart is empty"), 400
+    try:
+        return checkout(user, cart)
+    except Exception as e:
+        print("Checkout crash:", e)
+        return jsonify(ok=False, message=str(e)), 500
 if __name__ == "__main__":
     app.run(debug=True)
     

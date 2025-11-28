@@ -62,6 +62,7 @@ def getbook(title = None, author = None):
         "title":  title,
         "author": author,
         }  
+    
     response = requests.get(f"{BASE_URL}/books", json=data, headers=auth_headers())
     try:
         data = response.json()  # Parse JSON data from the server
@@ -77,7 +78,16 @@ def getbook(title = None, author = None):
     return response.status_code, count, books
         
 def checkout(cart):
-    headers = {"Authorization": f"Bearer {session_token}"}
+    if not session_token:
+        return 401, {"ok": False, "message": "Not logged in"}
     data = {"cart": cart}
-    resp = requests.post(f"{BASE_URL}/checkout", json=data, headers=headers)
-    return resp.status_code, resp.json()
+    resp = requests.post(f"{BASE_URL}/checkout",json=data,headers=auth_headers() 
+    )
+    try:
+        return resp.status_code, resp.json()
+    except Exception:
+        return resp.status_code, {
+            "ok": False,
+            "message": f"Server did not return JSON. Raw response:\n{resp.text}"
+        }
+
