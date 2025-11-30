@@ -181,7 +181,7 @@ def checkout(user, cart):
 
         # 5) Set order status based on cart contents
         has_rent = any(item["type"] == "rent" for item in cart)
-        new_status = "Pending Rental Payment" if has_rent else "Pending Purchase Payment"
+        new_status = "Pending Rental Payment" if has_rent else "Payed"
 
         curr.execute(
             "UPDATE orders SET status = ? WHERE order_id = ?",
@@ -201,23 +201,22 @@ def checkout(user, cart):
 
         
 #------------------------Manager Functions --------------
-#Manager views all orders
+#Manager views all orders (Simple Fetch response)
 def view_orders():
-    if not is_authenticated() or not current_user_is_manager():
-        return jsonify(ok=False, message="Forbidden: manager only"), 403
     try:
         conn = sqlite3.connect(DB_PATH)
         curr = conn.cursor()
-        cols = "user_id, status, payed, created_at"
+        cols = "order_id,user_id, status, payed, created_at"
         curr.execute(f"SELECT {cols} FROM orders")
         rows = curr.fetchall()
         results = []
         for row in rows:
             results.append({
-                "user_id": row[0],
-                "status": row[1],
-                "payed": row[2],
-                "created_at": row[3],
+                "order_id": row[0],
+                "user_id": row[1],
+                "status": row[2],
+                "payed": row[3],
+                "created_at": row[4],
                 })
         return results
     
@@ -227,29 +226,59 @@ def view_orders():
     finally:
         conn.close()
 
-#Manager updates order statuses
-def update_status(orderid, status):
+
+#Manager updates order statuses (Rent goes from Pending to Retuned for example)
+def update_status(orderid, status, paid=None):
+    if not status:
+        return False
+
+    # Decide what payed should be
+    if paid is not None:
+        payed_value = 1 if paid else 0
+    else:
+        # Infer from the status text
+        payed_value = 1 if "paid" in status.lower() else 0
+    
+    conn = sqlite3.connect(DB_PATH)
     try:
-        conn = sqlite3.connect(DB_PATH)
         curr = conn.cursor()
-        curr.execute(f"UPDATE orders SET status = ? WHERE order_id = ?", (status, orderid,))
+        curr.execute(
+            "UPDATE orders SET status = ?, payed = ? WHERE order_id = ?",
+            (status, payed_value, orderid)
+        )
         conn.commit()
-        print(f"Order {orderid} updated to status '{status}'.")
-        return True
+        return curr.rowcount > 0  # True if something updated
     except sqlite3.Error as e:
         print("Database error:", e)
         return False
     finally:
         conn.close()
 
-#Add book to book list
+#Add book to book ()
 def add_book(title, author, price_buy, price_rent, quantity = 1):
+    conn = sqlite3.connect(DB_PATH)
     try:
-        conn = sqlite3.connect(DB_PATH)
         curr = conn.cursor()
-        curr.execute(f"INSERT INTO books (title, author, price_buy, price_rent) VALUES (?, ?, ?, ?)", (title, author, float(price_buy), float(price_rent), int(quantity)))
+        #Check if we are adding a duplicate book
+        curr.execute(
+            "SELECT book_id FROM books WHERE title = ? AND author = ?",
+            (title, author)
+        )
+        existing = curr.fetchone()
+        if existing:
+            #If we have a duplicate, update the quantity
+            curr.execute(
+                "UPDATE books SET quantity = quantity + ? WHERE book_id = ?",
+                (int(quantity), existing[0])
+            )
+        else:
+            #Otherwise insert a new book
+            curr.execute(
+                "INSERT INTO books (title, author, price_buy, price_rent, quantity) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (title, author, float(price_buy), float(price_rent), int(quantity))
+            )
         conn.commit()
-        print(f"Added {title} from {author} with price {price_buy} for buying and price {price_rent} for rent")
         return True
     except sqlite3.Error as e:
         print("Database error:", e)
@@ -262,7 +291,9 @@ def change_book_status(book_id, status):
     try:
         conn = sqlite3.connect(DB_PATH)
         curr = conn.cursor()
-        curr.execute(f"UPDATE books SET quantity = ? WHERE book_id = ?", (status, book_id,))
+        
+        
+        curr.execute(f"UPDATE books SET status = ? WHERE book_id = ?", (status, book_id,))
         conn.commit()
         print(f"Changed {book_id} status to {status}")
         return True
@@ -359,13 +390,47 @@ def addbook():
     author = data.get("author")
     price_buy = data.get("price_buy")
     price_rent = data.get("price_rent")
-    ok = add_book(title, author, price_buy, price_rent)
+    quantity = data.get("quantity",1)
+    
+    if not title or not author or price_buy is None or price_rent is None:
+        return jsonify(ok=False, message="Missing book fields"), 400
+    
+    ok = add_book(title, author, price_buy, price_rent, quantity)
     if ok:
         return jsonify(ok=True, message="Book Added!"), 201
     else:
         return jsonify(ok=False, message="Failed to add book"), 409
 
+@app.route("/orders")
+def route_view_orders():
+    user = get_token_user() #Confirm Authentication
+    if not user:
+        return jsonify(ok=False, message="Auth required"), 401
+    if not current_user_is_manager():
+        return jsonify(ok=False, message="Forbidden: manager only"), 403
+    
+    orders = view_orders() #Run view orders function
+    return jsonify(ok = True, count=len(orders), orders=orders), 200 #Return all information of orders from database
 
+@app.post("/orders/<int:orderid>/status")
+def route_update_status(orderid):
+    user = get_token_user()
+    if not user:
+        return jsonify(ok=False, message="Auth required"), 401
+    if not current_user_is_manager():
+        return jsonify(ok=False, message="Forbidden: manager only"), 403
+
+    data = request.get_json(silent=True) or {}
+    status = data.get("status")
+    if not status:
+        return jsonify(ok=False, message="Missing status"), 400
+
+    ok = update_status(orderid, status)
+    if ok:
+        return jsonify(ok=True, message="Order updated"), 200
+    else:
+        return jsonify(ok=False, message="Order not found"), 404
+    
 @app.get("/books")
 def route_booksearch():
     user = get_token_user()

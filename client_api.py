@@ -91,3 +91,27 @@ def checkout(cart):
             "message": f"Server did not return JSON. Raw response:\n{resp.text}"
         }
 
+#Manager Helper functions
+# ---- Manager API calls ----
+
+def view_orders():
+    resp = requests.get(f"{BASE_URL}/orders", headers=auth_headers())
+    try:
+        data = resp.json()
+    except Exception:
+        return resp.status_code, []
+    return resp.status_code, data.get("orders", [])  # expects {"orders":[...]}
+
+def update_order_status(order_id, status):
+    payload = {"status": status}
+    resp = requests.post(
+        f"{BASE_URL}/orders/{order_id}/status",
+        json=payload,
+        headers=auth_headers()
+    )
+    try:
+        data = resp.json()
+    except Exception:
+        return resp.status_code, {"ok": False, "message": "Bad server response"}
+    return resp.status_code, data
+

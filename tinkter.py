@@ -1,6 +1,6 @@
 from tkinter import *
 import tkinter as tk
-from client_api import logout, login_account, create_account, getbook, checkout
+from client_api import logout, login_account, create_account, getbook, checkout, view_orders, update_order_status
 from tkinter import messagebox
 from book_results import BookResults 
 
@@ -16,6 +16,8 @@ window.title("Bookstore Application")
 window.rowconfigure(0, weight=1)
 window.columnconfigure(0, weight=1)
 window.resizable(False, False) # no resizing in x or y
+
+
 
 #Frames that switches
 menu_frame   = tk.Frame(window, bg="beige")
@@ -66,7 +68,7 @@ def on_submit_create():
     password_input = password.get().strip()
     email_input    = email.get().strip()
     admin_input = admin_password.get().strip()
-    if not username or not password or not email:
+    if not username_input or not password_input or not email_input:
         messagebox.showerror("Error", "Please fill in all fields.")
         return
 
@@ -93,7 +95,7 @@ def login():
     password_input = password.get().strip()
     want_manager = is_manager_var.get()
     
-    if not username or not password:
+    if not username_input or not password_input:
         messagebox.showerror("Error", "Please fill in all fields.")
         return
     try:
@@ -199,7 +201,7 @@ def refresh_cart():
             if i["book_id"] == book_id and i["type"] == otype
         )
 
-        unit_price = sample["price_buy"] if otype == "buy" else sample["price_rent"]
+        unit_price = float(sample["price_buy"]) if otype == "buy" else float(sample["price_rent"])
         subtotal = unit_price * qty
 
         # Outer card for one cart item
@@ -243,6 +245,41 @@ def remove_one(book_id, order_type):
             cart.pop(i)
             break
     refresh_cart()
+
+#Helper for viewing orders UI
+def refresh_orders():
+    orders_listbox.delete(0, tk.END)
+    status, orders = view_orders()
+    if status != 200:
+        messagebox.showerror("Error", f"Failed to load orders (Status {status})")
+        return
+
+    # save for selection lookup
+    order_list.orders_cache = orders
+
+    for o in orders:
+        orders_listbox.insert(
+            tk.END,
+            f'Order #{o["order_id"]} | User {o["user_id"]} | {o["status"]} | payed={o["payed"]} | {o["created_at"]}'
+        )
+
+def on_update_order():
+    sel = orders_listbox.curselection()
+    if not sel:
+        messagebox.showwarning("Select order", "Please select an order first.")
+        return
+
+    idx = sel[0]
+    order = order_list.orders_cache[idx]
+    order_id = order["order_id"]
+    new_status = status_var.get()
+
+    st, data = update_order_status(order_id, new_status)
+    if st == 200 and data.get("ok"):
+        messagebox.showinfo("Success", data.get("message", "Updated"))
+        refresh_orders()
+    else:
+        messagebox.showerror("Error", data.get("message", f"Failed (Status {st})"))
 
 #Main menu
 create_account_button = Button(menu_frame, text="Create Account", font=("Arial",14), width = 20, height = 2, command = lambda:show_frame(create_frame))
@@ -374,7 +411,7 @@ Label(manager_menu, text="Main Menu", bg = "white", font=("Arial", 25, "bold")).
 option_frame2 = tk.Frame(manager_menu, bg="white")
 option_frame2.pack(pady=10)  
 
-View_Orders_button = Button(option_frame2, text="View Orders", font=("Arial",14), width = 20, height = 2, command = lambda:show_frame(order_list))
+View_Orders_button = Button(option_frame2, text="View Orders", font=("Arial",14), width = 20, height = 2, command = lambda: (show_frame(order_list), refresh_orders()))
 edit_books_button = Button(option_frame2, text="Update Book Information", font=("Arial",14), width=20, height= 2, command=lambda:show_frame(edit_books))
 logout_button = Button(option_frame2, text="Logout", font=("Arial",14), width=20, height = 2, command=lambda:logout_session())
 
@@ -382,9 +419,29 @@ View_Orders_button.grid(row=0, column=0, padx=5, pady=5)
 edit_books_button.grid(row=1, column=0, padx=5, pady=5)
 logout_button.grid(row=2, column=0, padx=5, pady=5)
 
-#Orderlist button
-Label(order_list, text= "All Orders").pack(pady=30)
 
+#Orderbox UI
+orders_listbox = tk.Listbox(order_list, width=70, height=12, font=("Arial", 11))
+orders_listbox.pack(pady=10)
+status_var = tk.StringVar(value="Pending Purchase Payment")
+status_options = [
+    "Pending Purchase Payment",
+    "Pending Rental Payment",
+    "Paid",
+    "Delivered",
+    "Returned",
+    "Cancelled"
+]
+status_menu = tk.OptionMenu(order_list, status_var, *status_options)
+status_menu.pack(pady=5)
+
+
+Label(order_list, text= "All Orders").pack(pady=30)
+tk.Button(order_list, text="Refresh Orders", font=("Arial", 12),
+          command= lambda: refresh_orders()).pack(pady=5)
+
+tk.Button(order_list, text="Update Selected Order", font=("Arial", 12),
+          command=on_update_order).pack(pady=5)
 Back = Button(order_list,text="Back", font=("Arial",25,), command = lambda:show_frame(manager_menu))
 Back.pack(pady=10)
 
