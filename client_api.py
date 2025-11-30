@@ -45,12 +45,13 @@ def logout():
     session_token = None
     return resp.status_code, resp.json()
 
-def addbook(title, author, price_buy, price_rent):
+def addbook(title, author, price_buy, price_rent, quantity =1):
     data = {
         "title": title,
         "author": author,
         "price_buy": price_buy,
-        "price_rent": price_rent
+        "price_rent": price_rent,
+        "quantity": quantity
     }
     response = requests.post(
         f"{BASE_URL}/addbook", json=data, headers=auth_headers()

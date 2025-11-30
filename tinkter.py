@@ -1,6 +1,6 @@
 from tkinter import *
 import tkinter as tk
-from client_api import logout, login_account, create_account, getbook, checkout, view_orders, update_order_status
+from client_api import logout, login_account, create_account, getbook, checkout, view_orders, update_order_status,addbook
 from tkinter import messagebox
 from book_results import BookResults 
 
@@ -281,6 +281,38 @@ def on_update_order():
     else:
         messagebox.showerror("Error", data.get("message", f"Failed (Status {st})"))
 
+#Helper function to add/restock book 
+def on_add_or_restock():
+    title_val = m_title.get().strip()
+    author_val = m_author.get().strip()
+    buy_val = m_price_buy.get().strip()
+    rent_val = m_price_rent.get().strip()
+    qty_val = m_quantity.get().strip()
+
+    if not title_val or not author_val or not buy_val or not rent_val or not qty_val:
+        messagebox.showerror("Error", "Fill in all add/restock fields.")
+        return
+    
+    try:
+        qty_val = int(qty_val)
+    except:
+        messagebox.showerror("Error", "Quantity must be a number.")
+        return
+
+    status, data = addbook(title_val, author_val, buy_val, rent_val, qty_val)
+
+    if status in (200, 201) and data.get("ok"):
+        messagebox.showinfo("Success", data.get("message", "Book updated!"))
+
+        # Clear fields
+        m_title.set("")
+        m_author.set("")
+        m_price_buy.set("")
+        m_price_rent.set("")
+        m_quantity.set("")
+    else:
+        messagebox.showerror("Error", data.get("message", "Failed to add/restock."))
+        
 #Main menu
 create_account_button = Button(menu_frame, text="Create Account", font=("Arial",14), width = 20, height = 2, command = lambda:show_frame(create_frame))
 create_account_button.pack(pady=20)
@@ -445,9 +477,41 @@ tk.Button(order_list, text="Update Selected Order", font=("Arial", 12),
 Back = Button(order_list,text="Back", font=("Arial",25,), command = lambda:show_frame(manager_menu))
 Back.pack(pady=10)
 
+
 #Edit Books
 Label(edit_books, text= "All Orders").pack(pady=30)
+Label(edit_books, text="Update Book Information", bg="white",
+      font=("Arial", 20, "bold")).pack(pady=15)
 
+#Format to see the books in display
+edit_form = tk.Frame(edit_books, bg="white")
+edit_form.pack(pady=10)
+
+# form variables
+m_title = tk.StringVar()
+m_author = tk.StringVar()
+m_price_buy = tk.StringVar()
+m_price_rent = tk.StringVar()
+m_quantity = tk.StringVar()
+
+# ---- Add / Restock book ----
+tk.Label(edit_form, text="Title:", bg="white").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+tk.Entry(edit_form, textvariable=m_title, width=25).grid(row=0, column=1, padx=5, pady=5)
+
+tk.Label(edit_form, text="Author:", bg="white").grid(row=1, column=0, sticky="e", padx=5, pady=5)
+tk.Entry(edit_form, textvariable=m_author, width=25).grid(row=1, column=1, padx=5, pady=5)
+
+tk.Label(edit_form, text="Buy Price:", bg="white").grid(row=2, column=0, sticky="e", padx=5, pady=5)
+tk.Entry(edit_form, textvariable=m_price_buy, width=25).grid(row=2, column=1, padx=5, pady=5)
+
+tk.Label(edit_form, text="Rent Price:", bg="white").grid(row=3, column=0, sticky="e", padx=5, pady=5)
+tk.Entry(edit_form, textvariable=m_price_rent, width=25).grid(row=3, column=1, padx=5, pady=5)
+
+tk.Label(edit_form, text="Quantity:", bg="white").grid(row=4, column=0, sticky="e", padx=5, pady=5)
+tk.Entry(edit_form, textvariable=m_quantity, width=25).grid(row=4, column=1, padx=5, pady=5)
+
+tk.Button(edit_books, text="Add / Restock Book",
+          font=("Arial", 14), command=on_add_or_restock).pack(pady=10)
 Back = Button(edit_books,text="Back", font=("Arial",25,), command = lambda:show_frame(manager_menu))
 Back.pack(pady=10)
 
