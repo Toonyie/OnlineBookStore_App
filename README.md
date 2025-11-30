@@ -1,14 +1,43 @@
-# 🛒 Online Bookstore Desktop Application
+🛒 Online Bookstore Desktop Application
+📘 Project Overview
 
-## 📘 Project Overview
-This project is a simple **desktop-based online bookstore system**.  
-It lets users register, log in, search for books, and buy or rent them.  
-Managers can log in separately to manage books, view orders, and update payment statuses.
+This project is a desktop-based online bookstore system built for a school assignment.
+It demonstrates full-stack fundamentals: database design, RESTful backend development, and a desktop GUI frontend.
+
+What users can do
+
+Create an account with username, password, and email
+
+Log in / log out
+
+Search books by title and/or author
+
+View results in a paginated list
+
+Add books to cart as buy or rent
+
+Cart enforces stock limits (can’t add more than available quantity)
+
+Checkout to place an order
+
+Orders are stored in the database
+
+Book quantity decreases automatically
+
+What managers can do
+
+Log in using a manager account
+
+View all orders in the system
+
+Update order status / payment status (e.g., Pending → Paid)
+
+Add new books or restock existing books by increasing quantity
 
 The system is composed of:
-- **Backend:** Python Flask REST API  
-- **Database:** SQLite (`bookstore.db`)  
-- **Frontend:** Python Tkinter desktop GUI  
 
-## 🧩 Project Structure
-The project consists of 3 files. App.py (Server side file that will access the data using a Restful API built with python Flask API framework), Client_App.py (Client side file that will interact with the API to make orders, login, and sell books), and bookstore.db (Our database that will store the rented books, orders, and login accounts)
+Backend: Python Flask REST API
+
+Database: SQLite (bookstore.db)
+
+Frontend: Python Tkinter desktop GUI
