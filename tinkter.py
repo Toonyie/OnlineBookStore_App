@@ -3,6 +3,10 @@ import tkinter as tk
 from client_api import logout, login_account, create_account, getbook, checkout, view_orders, update_order_status,addbook
 from tkinter import messagebox
 from book_results import BookResults 
+import smtplib
+from email.message import EmailMessage
+import os
+
 
 # widgets = GUI elements: buttons, textboxes, labels, etc
 # windows = pop up that holds these widgets
@@ -188,12 +192,13 @@ def refresh_cart():
         tk.Label(cart_list_frame, text="Cart is empty.", bg="white",
                  font=("Arial", 12)).pack()
         return
-
+    
     # group cart items by (book_id, type)
     grouped = {}
     for item in cart:
         key = (item["book_id"], item["type"])
         grouped[key] = grouped.get(key, 0) + 1
+    grand_total = 0.0
 
     for (book_id, otype), qty in grouped.items():
         sample = next(
@@ -203,7 +208,7 @@ def refresh_cart():
 
         unit_price = float(sample["price_buy"]) if otype == "buy" else float(sample["price_rent"])
         subtotal = unit_price * qty
-
+        grand_total += subtotal  
         # Outer card for one cart item
         card = tk.Frame(cart_list_frame, bg="white", bd=1, relief="solid")
         card.pack(fill="x", padx=8, pady=6)
@@ -238,6 +243,14 @@ def refresh_cart():
 
         # make the prices stretch left nicely
         details.columnconfigure(3, weight=1)
+        
+    tk.Label(
+        cart_list_frame,
+        text=f"Order Total: ${grand_total:.2f}",
+        bg="white",
+        font=("Arial", 12, "bold"),
+        anchor="e"
+    ).pack(fill="x", padx=10, pady=(8, 0))
 
 def remove_one(book_id, order_type):
     for i, item in enumerate(cart):
