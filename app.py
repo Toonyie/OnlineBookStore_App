@@ -161,7 +161,7 @@ def checkout(user, cart):
         curr.execute(
             "INSERT INTO orders (user_id, status, payed, created_at) "
             "VALUES (?, ?, ?, datetime('now'))",
-            (user["id"], "Pending", 0)
+            (user["id"], "Pending", 1 if otype == "buy" else 0)
         )
         order_id = curr.lastrowid
         total = 0.0
@@ -276,7 +276,7 @@ def update_status(orderid, status, paid=None):
         return False
 
     # Decide what payed should be
-    paid_value = 1 if status.lower() == "paid" else 0
+    paid_value = 1 if (status.lower() == "paid" or status.lower() == "returned") else 0
     
     conn = sqlite3.connect(DB_PATH)
     try:
