@@ -156,30 +156,39 @@ def checkout(user, cart):
                 return jsonify(ok=False, message=f"Book {book_id} not found"), 404
             if row[0] < qty_needed:
                 return jsonify(ok=False, message=f"Not enough stock for book {book_id}"), 409
+            
+        has_rent = any(item["type"] == "rent" for item in cart)
 
-        # 3) Create order
+        # 3) Create order 
         curr.execute(
             "INSERT INTO orders (user_id, status, payed, created_at) "
             "VALUES (?, ?, ?, datetime('now'))",
-            (user["id"], "Pending", 1 if otype == "buy" else 0)
+            (user["id"], "Pending", 0)
         )
         order_id = curr.lastrowid
         total = 0.0
+
+        items_for_email = []  
+
         # 4) Insert order items + decrement quantity
         for item in cart:
             b_id  = item["book_id"]
             otype = item["type"]
 
-            # get correct price for this item
-            curr.execute("SELECT price_buy, price_rent FROM books WHERE book_id = ?", (b_id,))
+            # pull full book info for email + pricing
+            curr.execute(
+                "SELECT title, author, price_buy, price_rent FROM books WHERE book_id = ?",
+                (b_id,)
+            )
             row = curr.fetchone()
             if not row:
                 return jsonify(ok=False, message=f"Book {b_id} not found"), 404
 
-            price_buy, price_rent = row
+            title, author, price_buy, price_rent = row
             unit_price = price_buy if otype == "buy" else price_rent
-            total += unit_price
-            
+            subtotal = unit_price  # qty=1 per cart entry
+            total += subtotal
+
             # insert line item
             curr.execute(
                 "INSERT INTO order_items (order_id, book_id, item_type, unit_price, quantity) "
@@ -193,21 +202,37 @@ def checkout(user, cart):
                 (b_id,)
             )
 
+            # <-- NEW: store email line item
+            items_for_email.append({
+                "title": title,
+                "author": author,
+                "type": otype,
+                "qty": 1,
+                "unit_price": float(unit_price),
+                "subtotal": float(subtotal)
+            })
+
         # 5) Set order status based on cart contents
-        has_rent = any(item["type"] == "rent" for item in cart)
-        new_status = "Pending Rental Payment" if has_rent else "Paid"
+        if has_rent:
+            new_status = "Pending Rental Payment"
+            payed_val = 0
+        else:
+            new_status = "Paid"
+            payed_val = 1
 
         curr.execute(
-            "UPDATE orders SET status = ? WHERE order_id = ?",
-            (new_status, order_id)
+            "UPDATE orders SET status = ?, payed = ? WHERE order_id = ?",
+            (new_status, payed_val, order_id)
         )
 
         conn.commit()
-        
+
+        # send email AFTER commit
         email_addr = get_user_email(user["id"])
         if email_addr:
-            send_bill_email(email_addr, f"Order #{order_id} placed. Total: ${total:.2f}")
-            return jsonify(ok=True, message="Order placed!", order_id=order_id), 201
+            send_bill_email(email_addr, items_for_email, total)  # <-- FIXED
+
+        return jsonify(ok=True, message="Order placed!", order_id=order_id), 201
 
     except sqlite3.Error as e:
         conn.rollback()
@@ -218,14 +243,36 @@ def checkout(user, cart):
         conn.close()
 
 
+
 #send billing email
-def send_bill_email(to_email, body):
+def send_bill_email(to_email, items, grand_total):
+    #To send an email the os env email and password has to be set before app.py to run if you want to send emails
     sender = os.getenv("BOOKSTORE_EMAIL")
     password = os.getenv("BOOKSTORE_EMAIL_PASS")
 
     if not sender or not password:
         print("Email not configured; skipping send.")
         return False
+    #Receipt text
+    lines = []
+    lines.append(f"Thanks for your order! 🎉")
+
+    for it in items:
+        lines.append(f'{it["title"]} — {it["author"]}')
+        lines.append(
+            f'  Type: {it["type"].upper()}  |  Qty: {it["qty"]}  '
+            f'|  Unit: ${it["unit_price"]:.2f}  |  Subtotal: ${it["subtotal"]:.2f}'
+        )
+        lines.append("")  # blank line between items
+
+    lines.append("-" * 45)
+    lines.append(f"Grand Total: ${grand_total:.2f}")
+    lines.append("")
+    lines.append("If you rented books, please return by the due date.")
+    lines.append("Thank you for shopping with us!")
+
+    body = "\n".join(lines)
+
 
     msg = EmailMessage()
     msg["From"] = sender
