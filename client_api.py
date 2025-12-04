@@ -9,6 +9,8 @@ def auth_headers():
         return {"Authorization": f"Bearer {session_token}"}
     return {}
 
+
+
 def create_account(username, email, password, is_customer=True):
     data = {
         "username": username,
@@ -20,11 +22,12 @@ def create_account(username, email, password, is_customer=True):
     response = requests.post(f"{BASE_URL}/createaccount", json=data)
     return response.status_code, response.json()
 
-def login_account(username, password):
+def login_account(username, password, want_manager=False):
     global session_token
     data = {
         "username": username,
-        "password": password
+        "password": password,
+        "want_manager": want_manager
     }
     response = requests.get(f"{BASE_URL}/loginaccount", json=data)
     result = response.json()
@@ -33,7 +36,8 @@ def login_account(username, password):
     if response.status_code == 200 and result.get("ok"):
         session_token = result.get("token")
         print("Saved session token:", session_token)
-
+    else:
+        session_token = None
     return response.status_code, result
 
 def logout():

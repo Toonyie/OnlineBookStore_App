@@ -4,6 +4,9 @@ import sqlite3
 from pathlib import Path
 import bcrypt
 import secrets
+import os, smtplib
+from email.message import EmailMessage
+
 app = Flask(__name__)
 SESSIONS = {}  
 BASE_DIR = Path(__file__).resolve().parent
@@ -118,7 +121,17 @@ def booksearch(title = None, author = None):
     
     finally:
         conn.close()
-    
+        
+def get_user_email(user_id):
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT email FROM users WHERE user_id = ?", (user_id,))
+        row = cur.fetchone()
+        return row[0] if row else None
+    finally:
+        conn.close()
+
 #Helper function for checkout
 def checkout(user, cart):
     conn = sqlite3.connect(DB_PATH)
@@ -151,7 +164,7 @@ def checkout(user, cart):
             (user["id"], "Pending", 0)
         )
         order_id = curr.lastrowid
-
+        total = 0.0
         # 4) Insert order items + decrement quantity
         for item in cart:
             b_id  = item["book_id"]
@@ -165,7 +178,8 @@ def checkout(user, cart):
 
             price_buy, price_rent = row
             unit_price = price_buy if otype == "buy" else price_rent
-
+            total += unit_price
+            
             # insert line item
             curr.execute(
                 "INSERT INTO order_items (order_id, book_id, item_type, unit_price, quantity) "
@@ -181,7 +195,7 @@ def checkout(user, cart):
 
         # 5) Set order status based on cart contents
         has_rent = any(item["type"] == "rent" for item in cart)
-        new_status = "Pending Rental Payment" if has_rent else "Payed"
+        new_status = "Pending Rental Payment" if has_rent else "Paid"
 
         curr.execute(
             "UPDATE orders SET status = ? WHERE order_id = ?",
@@ -189,7 +203,11 @@ def checkout(user, cart):
         )
 
         conn.commit()
-        return jsonify(ok=True, message="Order placed!", order_id=order_id), 201
+        
+        email_addr = get_user_email(user["id"])
+        if email_addr:
+            send_bill_email(email_addr, f"Order #{order_id} placed. Total: ${total:.2f}")
+            return jsonify(ok=True, message="Order placed!", order_id=order_id), 201
 
     except sqlite3.Error as e:
         conn.rollback()
@@ -199,6 +217,31 @@ def checkout(user, cart):
     finally:
         conn.close()
 
+
+#send billing email
+def send_bill_email(to_email, body):
+    sender = os.getenv("BOOKSTORE_EMAIL")
+    password = os.getenv("BOOKSTORE_EMAIL_PASS")
+
+    if not sender or not password:
+        print("Email not configured; skipping send.")
+        return False
+
+    msg = EmailMessage()
+    msg["From"] = sender
+    msg["To"] = to_email
+    msg["Subject"] = "Your Bookstore Receipt"
+    msg.set_content(body)
+
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
+            smtp.starttls()
+            smtp.login(sender, password)
+            smtp.send_message(msg)
+        return True
+    except Exception as e:
+        print("Email send failed:", e)
+        return False
         
 #------------------------Manager Functions --------------
 #Manager views all orders (Simple Fetch response)
@@ -233,18 +276,14 @@ def update_status(orderid, status, paid=None):
         return False
 
     # Decide what payed should be
-    if paid is not None:
-        payed_value = 1 if paid else 0
-    else:
-        # Infer from the status text
-        payed_value = 1 if "paid" in status.lower() else 0
+    paid_value = 1 if status.lower() == "paid" else 0
     
     conn = sqlite3.connect(DB_PATH)
     try:
         curr = conn.cursor()
         curr.execute(
             "UPDATE orders SET status = ?, payed = ? WHERE order_id = ?",
-            (status, payed_value, orderid)
+            (status, paid_value, orderid)
         )
         conn.commit()
         return curr.rowcount > 0  # True if something updated
@@ -285,24 +324,6 @@ def add_book(title, author, price_buy, price_rent, quantity = 1):
         return False
     finally:
         conn.close()
-
-#Change book status
-def change_book_status(book_id, status):
-    try:
-        conn = sqlite3.connect(DB_PATH)
-        curr = conn.cursor()
-        
-        
-        curr.execute(f"UPDATE books SET status = ? WHERE book_id = ?", (status, book_id,))
-        conn.commit()
-        print(f"Changed {book_id} status to {status}")
-        return True
-    except sqlite3.Error as e:
-        print("Database error:", e)
-        return False
-    finally:
-        conn.close()
-    
     
 @app.route("/", methods=["GET"])
 def root():
@@ -333,6 +354,7 @@ def route_to_login():
     data = request.get_json(silent=True) or {}
     username = data.get("username")
     password = data.get("password")
+    want_manager = data.get("want_manager",False)
     
     if not username or not password:
         return jsonify(ok=False, message="Missing username/password"), 400
@@ -340,7 +362,14 @@ def route_to_login():
     user = login(username, password)
     if not user:
         return jsonify(ok=False, message="Invalid credentials"), 401
+    
+    #Check if the user is trying to log in as a manager but isn't a manager
+    if want_manager and user["role"] != "manager":
+        return jsonify(ok=False, message="This account is not a manager."), 403
 
+    if not want_manager and user["role"] == "manager":
+        return jsonify(ok=False, message="This account is not a customer."), 403
+    
     # check if this specific user already logged in
     for token, sess_user in SESSIONS.items():
         if sess_user["id"] == user["id"]:
@@ -453,7 +482,7 @@ def route_checkout():
     if not user:
         return jsonify(ok=False, message="Auth required"), 401
     if user["role"] != "customer" :
-        return jsonify(ok=False, message="Forbidden: customer only"), 40
+        return jsonify(ok=False, message="Forbidden: customer only"), 403
     
     data = request.get_json(silent = True) or {}   
     cart = data.get("cart", [])

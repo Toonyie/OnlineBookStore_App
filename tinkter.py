@@ -3,9 +3,7 @@ import tkinter as tk
 from client_api import logout, login_account, create_account, getbook, checkout, view_orders, update_order_status,addbook
 from tkinter import messagebox
 from book_results import BookResults 
-import smtplib
 from email.message import EmailMessage
-import os
 
 
 # widgets = GUI elements: buttons, textboxes, labels, etc
@@ -75,7 +73,12 @@ def on_submit_create():
     if not username_input or not password_input or not email_input:
         messagebox.showerror("Error", "Please fill in all fields.")
         return
-
+    
+    #A simple check for a valid email
+    if "@" not in email_input or ".com" not in email_input:
+        messagebox.showerror("Error", "Enter a valid email")
+        return
+    
     try:
         status, data = create_account(username_input, email_input, password_input, False if admin_input == "seal" else True)
     except Exception as e:
@@ -102,8 +105,9 @@ def login():
     if not username_input or not password_input:
         messagebox.showerror("Error", "Please fill in all fields.")
         return
+    
     try:
-        status, data = login_account(username_input, password_input)
+        status, data = login_account(username_input, password_input,want_manager)
     except Exception as e:
         messagebox.showerror("Error", f"Network error: {e}")
         return
