@@ -91,7 +91,7 @@ def login(username, password):
     conn = get_db_connection()
     try:
         cur = conn.cursor(buffered=True)
-        cur.execute("SELECT user_id, username, password_hash, role FROM users WHERE username = %s", (username,))
+        cur.execute("SELECT user_id, username, password_hash, role FROM users WHERE BINARY username = %s", (username,))
         row = cur.fetchone()
 
         #If a username exists in the database
@@ -443,6 +443,7 @@ def route_to_login():
         return jsonify(ok=False, message="Missing username/password"), 400
 
     user = login(username, password)
+    print(f"DEBUG CHECK -> User: '{user['username']}', Role: '{user['role']}', Want Manager: {want_manager}")
     if not user:
         return jsonify(ok=False, message="Invalid credentials"), 401
     
