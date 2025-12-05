@@ -3,3 +3,4 @@ flask
 bcrypt
 mysql-connector-python
 dotenv
+threading

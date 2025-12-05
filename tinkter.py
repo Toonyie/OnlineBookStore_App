@@ -4,7 +4,7 @@ from client_api import logout, login_account, create_account, getbook, checkout,
 from tkinter import messagebox
 from book_results import BookResults 
 from email.message import EmailMessage
-
+import threading
 
 # widgets = GUI elements: buttons, textboxes, labels, etc
 # windows = pop up that holds these widgets
@@ -60,67 +60,63 @@ def back():
 
 
 def logout_session():
-    logout()
-    show_frame(menu_frame)
+    def logout_task():
+        try:
+            logout()
+            window.after(0, lambda: show_frame(menu_frame))
+        except Exception as e:
+            print("Logout error:", e)
+            window.after(0, lambda: show_frame(menu_frame))
+    threading.Thread(target=logout_task, daemon=True).start()
 
 #Create account submit button helper function
 def on_submit_create():
-    #Get the user inputs from entry
     username_input = username.get().strip()
     password_input = password.get().strip()
     email_input    = email.get().strip()
     admin_input = admin_password.get().strip()
+    
     if not username_input or not password_input or not email_input:
         messagebox.showerror("Error", "Please fill in all fields.")
         return
     
-    #A simple check for a valid email
     if "@" not in email_input or ".com" not in email_input:
         messagebox.showerror("Error", "Enter a valid email")
         return
-    
-    try:
-        status, data = create_account(username_input, email_input, password_input, False if admin_input == "seal" else True)
-    except Exception as e:
-        messagebox.showerror("Error", f"Network error: {e}")
-        return
-    
-    if data.get("ok") and 200 <= status < 300:
-        messagebox.showinfo("Success", data.get("message", "Account created!"))
-        # clear fields
-        username.set("")
-        password.set("")
-        email.set("")
-        show_frame(menu_frame)
-    else:
-        message = data.get("message", "Account creation failed.")
-        messagebox.showerror("Error", f"{message}\n(Status: {status})")
 
-def login():
-    #Get the user inputs from entry
-    username_input = username.get().strip()
-    password_input = password.get().strip()
-    want_manager = is_manager_var.get()
-    
-    if not username_input or not password_input:
-        messagebox.showerror("Error", "Please fill in all fields.")
-        return
-    
-    try:
-        status, data = login_account(username_input, password_input,want_manager)
-    except Exception as e:
-        messagebox.showerror("Error", f"Network error: {e}")
-        return
-    
+    #Define the callback to run on Main Thread after network call
+    def handle_create_response(status, data):
+        if data.get("ok") and 200 <= status < 300:
+            messagebox.showinfo("Success", data.get("message", "Account created!"))
+            # clear fields
+            username.set("")
+            password.set("")
+            email.set("")
+            show_frame(menu_frame)
+        else:
+            message = data.get("message", "Account creation failed.")
+            messagebox.showerror("Error", f"{message}\n(Status: {status})")
+
+    def run_create_task():
+        try:
+            is_admin = (admin_input == "seal")
+            status, data = create_account(username_input, email_input, password_input, not is_admin)
+            window.after(0, handle_create_response, status, data)
+        except Exception as e:
+            window.after(0, lambda: messagebox.showerror("Error", f"Network error: {e}"))
+    threading.Thread(target=run_create_task, daemon=True).start()
+        
+        
+def handle_login_response(status, data, want_manager):
     if data.get("ok") and 200 <= status < 300:
-        role = data.get("role")  # server returns "customer" or "manager"
-        #Check if manager role is found
+        role = data.get("role")
+        # Check if manager role is found
         if want_manager and role != "manager":
             messagebox.showerror("Error", "This account is not a manager.")
             return
 
         messagebox.showinfo("Success", data.get("message", "Login Successful!"))
-        # clear fields
+        # Clear fields
         username.set("")
         password.set("")
         print(role)
@@ -132,6 +128,31 @@ def login():
         message = data.get("message", "Login failed.")
         messagebox.showerror("Error", f"{message}\n(Status: {status})")
 
+
+def login():
+    # Get the user inputs from entry
+    username_input = username.get().strip()
+    password_input = password.get().strip()
+    want_manager = is_manager_var.get()
+    
+    if not username_input or not password_input:
+        messagebox.showerror("Error", "Please fill in all fields.")
+        return
+
+    # Define the background task
+    def run_login_task():
+        try:
+            # This blocking call runs in the background
+            status, data = login_account(username_input, password_input, want_manager)
+            
+            # Schedule UI update on main thread
+            window.after(0, handle_login_response, status, data, want_manager)
+        except Exception as e:
+            window.after(0, lambda: messagebox.showerror("Error", f"Network error: {e}"))
+    
+    # Start the thread
+    threading.Thread(target=run_login_task, daemon=True).start()
+    
 #Adding to card by book id and the order type
 def add_to_cart(book, order_type):
     already_in_cart = sum(
@@ -160,31 +181,57 @@ def add_to_cart(book, order_type):
     
 
 def run_search():
+    #Get inputs
     title_entry = title.get().strip()
     author_entry = author.get().strip()
 
-    status, count, books = getbook(title_entry, author_entry)
-    if status == 200:
-        results_widget.set_books(books)
-        # optional: show count somewhere
-        print("Found", count, "books")
-    else:
-        messagebox.showerror("Search failed", f"Status: {status}")
+    #Define callback
+    def handle_search_response(status, count, books):
+        if status == 200:
+            results_widget.set_books(books)
+            print("Found", count, "books")
+        else:
+            messagebox.showerror("Search failed", f"Status: {status}")
+
+    #Define background task
+    def search_task():
+        try:
+            status, count, books = getbook(title_entry, author_entry)
+            window.after(0, handle_search_response, status, count, books)
+        except Exception as e:
+            window.after(0, lambda: messagebox.showerror("Error", f"Search error: {e}"))
+
+    #Start Thread
+    threading.Thread(target=search_task, daemon=True).start()
 
 
 def on_checkout():
+    #Check cart
     if not cart:
         messagebox.showwarning("Cart", "Cart is empty!")
         return
 
-    status, data = checkout(cart)
-    if status == 201 and data.get("ok"):
-        messagebox.showinfo("Success", f'Order placed! Order ID: {data["order_id"]}')
-        refresh_cart()
-        cart.clear()
-        show_frame(customer_menu)
-    else:
-        messagebox.showerror("Error", data.get("message", "Checkout failed"))
+    #Define callback
+    def handle_checkout_response(status, data):
+        if status == 201 and data.get("ok"):
+            messagebox.showinfo("Success", f'Order placed! Order ID: {data["order_id"]}')
+            # It is safe to modify global cart here because we are back on main thread
+            cart.clear()
+            refresh_cart()
+            show_frame(customer_menu)
+        else:
+            messagebox.showerror("Error", data.get("message", "Checkout failed"))
+
+    #Define background task
+    def checkout_task():
+        try:
+            status, data = checkout(list(cart)) 
+            window.after(0, handle_checkout_response, status, data)
+        except Exception as e:
+            window.after(0, lambda: messagebox.showerror("Error", f"Checkout error: {e}"))
+
+    #Start Thread
+    threading.Thread(target=checkout_task, daemon=True).start()
 
 #cart display
 def refresh_cart():
@@ -265,20 +312,35 @@ def remove_one(book_id, order_type):
 
 #Helper for viewing orders UI
 def refresh_orders():
+    #Clear listbox immediately
     orders_listbox.delete(0, tk.END)
-    status, orders = view_orders()
-    if status != 200:
-        messagebox.showerror("Error", f"Failed to load orders (Status {status})")
-        return
 
-    # save for selection lookup
-    order_list.orders_cache = orders
+    #Define callback
+    def handle_orders_response(status, orders):
+        if status != 200:
+            messagebox.showerror("Error", f"Failed to load orders (Status {status})")
+            return
 
-    for o in orders:
-        orders_listbox.insert(
-            tk.END,
-            f'Order #{o["order_id"]} | User {o["user_id"]} | {o["status"]} | payed={o["payed"]} | {o["created_at"]}'
-        )
+        # Save for selection lookup
+        order_list.orders_cache = orders
+
+        # Populate listbox
+        for o in orders:
+            orders_listbox.insert(
+                tk.END,
+                f'Order #{o["order_id"]} | User {o["user_id"]} | {o["status"]} | payed={o["payed"]} | {o["created_at"]}'
+            )
+
+    #Define background task
+    def orders_task():
+        try:
+            status, orders = view_orders()
+            window.after(0, handle_orders_response, status, orders)
+        except Exception as e:
+            window.after(0, lambda: messagebox.showerror("Error", f"Network error: {e}"))
+
+    #Start Thread
+    threading.Thread(target=orders_task, daemon=True).start()
 
 def on_update_order():
     sel = orders_listbox.curselection()
@@ -287,19 +349,34 @@ def on_update_order():
         return
 
     idx = sel[0]
+
+    if not hasattr(order_list, 'orders_cache'):
+        return
+        
     order = order_list.orders_cache[idx]
     order_id = order["order_id"]
     new_status = status_var.get()
 
-    st, data = update_order_status(order_id, new_status)
-    if st == 200 and data.get("ok"):
-        messagebox.showinfo("Success", data.get("message", "Updated"))
-        refresh_orders()
-    else:
-        messagebox.showerror("Error", data.get("message", f"Failed (Status {st})"))
+    def handle_update_response(st, data):
+        if st == 200 and data.get("ok"):
+            messagebox.showinfo("Success", data.get("message", "Updated"))
+            # Trigger refresh (which is also threaded now!)
+            refresh_orders()
+        else:
+            messagebox.showerror("Error", data.get("message", f"Failed (Status {st})"))
+
+    def update_task():
+        try:
+            st, data = update_order_status(order_id, new_status)
+            window.after(0, handle_update_response, st, data)
+        except Exception as e:
+            window.after(0, lambda: messagebox.showerror("Error", f"Update error: {e}"))
+
+    threading.Thread(target=update_task, daemon=True).start()
 
 #Helper function to add/restock book 
 def on_add_or_restock():
+    #Get inputs
     title_val = m_title.get().strip()
     author_val = m_author.get().strip()
     buy_val = m_price_buy.get().strip()
@@ -311,24 +388,33 @@ def on_add_or_restock():
         return
     
     try:
-        qty_val = int(qty_val)
+        qty_int = int(qty_val)
     except:
         messagebox.showerror("Error", "Quantity must be a number.")
         return
 
-    status, data = addbook(title_val, author_val, buy_val, rent_val, qty_val)
+    #Define callback
+    def handle_add_response(status, data):
+        if status in (200, 201) and data.get("ok"):
+            messagebox.showinfo("Success", data.get("message", "Book updated!"))
+            # Clear fields
+            m_title.set("")
+            m_author.set("")
+            m_price_buy.set("")
+            m_price_rent.set("")
+            m_quantity.set("")
+        else:
+            messagebox.showerror("Error", data.get("message", "Failed to add/restock."))
 
-    if status in (200, 201) and data.get("ok"):
-        messagebox.showinfo("Success", data.get("message", "Book updated!"))
+    #Define background task
+    def add_task():
+        try:
+            status, data = addbook(title_val, author_val, buy_val, rent_val, qty_int)
+            window.after(0, handle_add_response, status, data)
+        except Exception as e:
+            window.after(0, lambda: messagebox.showerror("Error", f"Add book error: {e}"))
 
-        # Clear fields
-        m_title.set("")
-        m_author.set("")
-        m_price_buy.set("")
-        m_price_rent.set("")
-        m_quantity.set("")
-    else:
-        messagebox.showerror("Error", data.get("message", "Failed to add/restock."))
+    threading.Thread(target=add_task, daemon=True).start()
         
 #Main menu
 create_account_button = Button(menu_frame, text="Create Account", font=("Arial",14), width = 20, height = 2, command = lambda:show_frame(create_frame))

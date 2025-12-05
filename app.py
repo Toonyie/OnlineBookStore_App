@@ -7,21 +7,45 @@ import secrets
 import os, smtplib
 from email.message import EmailMessage
 import mysql.connector
+from mysql.connector import pooling
 
 app = Flask(__name__)
 SESSIONS = {}  
 
+#Create a connection pool to ensure an adequete response time
+dbconfig = {
+    "host": os.environ.get("DB_HOST", "localhost"),
+    "user": os.environ.get("DB_USER"),
+    "password": os.environ.get("DB_PASS"),
+    "database": os.environ.get("DB_NAME", "bookstore_db"),
+    "port": os.environ.get("DB_PORT", 3306)
+}
 
+try:
+    connection_pool = pooling.MySQLConnectionPool(
+        pool_name="bookstore_pool",
+        pool_size=5,
+        pool_reset_session=True,
+        **dbconfig
+    )
+except mysql.connector.Error as err:
+    print(f"Error creating connection pool: {err}")
+    exit(1)
+    
 #Connect to MySQL database
 def get_db_connection():
-    conn = mysql.connector.connect(
-        host=os.environ.get("DB_HOST", "localhost"),
-        user=os.environ.get("DB_USER"),
-        password=os.environ.get("DB_PASS"),
-        database=os.environ.get("DB_NAME", "bookstore_db"),
-        port=os.environ.get("DB_PORT", 3306)
-    )
-    return conn
+    try:
+        # Get a connection from the pool instead of making a new one
+        connection = connection_pool.get_connection()
+
+        # Ensure the connection is actually alive
+        if not connection.is_connected():
+            connection.reconnect(attempts=3, delay=0)
+
+        return connection
+    except mysql.connector.Error as err:
+        print(f"Error getting connection from pool: {err}")
+        raise
 
 
 #This functions gets the session token (if any) to validate authorization
