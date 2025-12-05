@@ -1,16 +1,28 @@
 # app.py
+from dotenv import load_dotenv
+load_dotenv('database.env')
 from flask import Flask, jsonify, request, session
-import sqlite3
-from pathlib import Path
 import bcrypt
 import secrets
 import os, smtplib
 from email.message import EmailMessage
+import mysql.connector
 
 app = Flask(__name__)
 SESSIONS = {}  
-BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR / "bookstore.db"
+
+
+#Connect to MySQL database
+def get_db_connection():
+    conn = mysql.connector.connect(
+        host=os.environ.get("DB_HOST", "localhost"),
+        user=os.environ.get("DB_USER"),
+        password=os.environ.get("DB_PASS"),
+        database=os.environ.get("DB_NAME", "bookstore_db"),
+        port=os.environ.get("DB_PORT", 3306)
+    )
+    return conn
+
 
 #This functions gets the session token (if any) to validate authorization
 def get_token_user():
@@ -33,18 +45,18 @@ def current_user_is_manager():
 
 #Create a user account
 def create_account(username, password, email, is_customer):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()) #Encode the password string into btyes
     print(hashed_pw)
     print(hashed_pw.decode('utf-8'))
     try:
-        cur = conn.cursor()
+        cur = conn.cursor(buffered=True)
         #Here we will store the encrypted password by decoding it which returns a string
-        cur.execute("INSERT INTO users (username, password_hash, email, role) VALUES (?, ?, ?, ?)", (username, hashed_pw.decode('utf-8'), email, "customer" if is_customer else "manager")) 
+        cur.execute("INSERT INTO users (username, password_hash, email, role) VALUES (%s, %s, %s, %s)", (username, hashed_pw.decode('utf-8'), email, "customer" if is_customer else "manager")) 
         conn.commit()
         print("Account created!")
         return True 
-    except sqlite3.Error as e:
+    except mysql.connector.Error as e:
         print("Database error:", e)
         return False
     finally:
@@ -52,10 +64,10 @@ def create_account(username, password, email, is_customer):
 
 #Logging in
 def login(username, password):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     try:
-        cur = conn.cursor()
-        cur.execute("SELECT user_id, username, password_hash, role FROM users WHERE username = ?", (username,))
+        cur = conn.cursor(buffered=True)
+        cur.execute("SELECT user_id, username, password_hash, role FROM users WHERE username = %s", (username,))
         row = cur.fetchone()
 
         #If a username exists in the database
@@ -67,7 +79,7 @@ def login(username, password):
         # Compare entered password with stored hash by encoding both into bytes
         if bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8')):
             print("Login successful for:", username)
-            cur.execute("SELECT * FROM users WHERE username = ?", (username,))
+            cur.execute("SELECT * FROM users WHERE username = %s", (username,))
             row = cur.fetchone()
             return{
                     "id": user_id,
@@ -78,7 +90,7 @@ def login(username, password):
             print("Password failed. Try Again...")
             return None
         
-    except sqlite3.Error as e:
+    except mysql.connector.Error as e:
         print("Database error")
         return None
     finally:
@@ -92,16 +104,16 @@ def logout():
 
 #Searching for books based on title and author
 def booksearch(title = None, author = None):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     cols = "book_id, title, author, price_buy, price_rent, quantity"
     try: #Depending on the request, we get all the books and append them to a results list
-        curr = conn.cursor()
+        curr = conn.cursor(buffered=True)
         if title and not author:
-            curr.execute(f"SELECT {cols} FROM books WHERE title = ?", (title,))
+            curr.execute(f"SELECT {cols} FROM books WHERE title = %s", (title,))
         elif author and not title:
-            curr.execute(f"SELECT {cols} FROM books WHERE author = ?", (author,))
+            curr.execute(f"SELECT {cols} FROM books WHERE author = %s", (author,))
         elif author and title:
-            curr.execute(f"SELECT {cols} FROM books WHERE title = ? AND author = ?", (title, author,))    
+            curr.execute(f"SELECT {cols} FROM books WHERE title = %s AND author = %s", (title, author,))    
         rows = curr.fetchall()
         results = []
         for row in rows:
@@ -115,7 +127,7 @@ def booksearch(title = None, author = None):
             })
         return results
     
-    except sqlite3.Error as e:
+    except mysql.connector.Error as e:
         print("Database error:", e)
         return []
     
@@ -123,10 +135,10 @@ def booksearch(title = None, author = None):
         conn.close()
         
 def get_user_email(user_id):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     try:
-        cur = conn.cursor()
-        cur.execute("SELECT email FROM users WHERE user_id = ?", (user_id,))
+        cur = conn.cursor(buffered=True)
+        cur.execute("SELECT email FROM users WHERE user_id = %s", (user_id,))
         row = cur.fetchone()
         return row[0] if row else None
     finally:
@@ -134,11 +146,11 @@ def get_user_email(user_id):
 
 #Helper function for checkout
 def checkout(user, cart):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     counts = {}
 
     try:
-        curr = conn.cursor()
+        curr = conn.cursor(buffered=True)
 
         # 1) Count how many of each book_id are being ordered
         for item in cart:
@@ -150,7 +162,7 @@ def checkout(user, cart):
 
         # 2) Check stock for all books
         for book_id, qty_needed in counts.items():
-            curr.execute("SELECT quantity FROM books WHERE book_id = ?", (book_id,))
+            curr.execute("SELECT quantity FROM books WHERE book_id = %s", (book_id,))
             row = curr.fetchone()
             if not row:
                 return jsonify(ok=False, message=f"Book {book_id} not found"), 404
@@ -162,7 +174,7 @@ def checkout(user, cart):
         # 3) Create order 
         curr.execute(
             "INSERT INTO orders (user_id, status, payed, created_at) "
-            "VALUES (?, ?, ?, datetime('now'))",
+            "VALUES (%s, %s, %s, NOW())",
             (user["id"], "Pending", 0)
         )
         order_id = curr.lastrowid
@@ -177,7 +189,7 @@ def checkout(user, cart):
 
             # pull full book info for email + pricing
             curr.execute(
-                "SELECT title, author, price_buy, price_rent FROM books WHERE book_id = ?",
+                "SELECT title, author, price_buy, price_rent FROM books WHERE book_id = %s",
                 (b_id,)
             )
             row = curr.fetchone()
@@ -192,17 +204,17 @@ def checkout(user, cart):
             # insert line item
             curr.execute(
                 "INSERT INTO order_items (order_id, book_id, item_type, unit_price, quantity) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "VALUES(%s, %s, %s, %s, %s)",
                 (order_id, b_id, otype, unit_price, 1)
             )
 
             # decrement stock
             curr.execute(
-                "UPDATE books SET quantity = quantity - 1 WHERE book_id = ?",
+                "UPDATE books SET quantity = quantity - 1 WHERE book_id = %s",
                 (b_id,)
             )
 
-            # <-- NEW: store email line item
+            #store email line item
             items_for_email.append({
                 "title": title,
                 "author": author,
@@ -221,7 +233,7 @@ def checkout(user, cart):
             payed_val = 1
 
         curr.execute(
-            "UPDATE orders SET status = ?, payed = ? WHERE order_id = ?",
+            "UPDATE orders SET status = %s, payed = %s WHERE order_id = %s",
             (new_status, payed_val, order_id)
         )
 
@@ -230,11 +242,11 @@ def checkout(user, cart):
         # send email AFTER commit
         email_addr = get_user_email(user["id"])
         if email_addr:
-            send_bill_email(email_addr, items_for_email, total)  # <-- FIXED
+            send_bill_email(email_addr, items_for_email, total)  
 
         return jsonify(ok=True, message="Order placed!", order_id=order_id), 201
 
-    except sqlite3.Error as e:
+    except mysql.connector.Error as e:
         conn.rollback()
         print("Database error:", e)
         return jsonify(ok=False, message=str(e)), 500
@@ -294,8 +306,8 @@ def send_bill_email(to_email, items, grand_total):
 #Manager views all orders (Simple Fetch response)
 def view_orders():
     try:
-        conn = sqlite3.connect(DB_PATH)
-        curr = conn.cursor()
+        conn = get_db_connection()
+        curr = conn.cursor(buffered=True)
         cols = "order_id,user_id, status, payed, created_at"
         curr.execute(f"SELECT {cols} FROM orders")
         rows = curr.fetchall()
@@ -310,7 +322,7 @@ def view_orders():
                 })
         return results
     
-    except sqlite3.Error as e:
+    except mysql.connector.Error as e:
         print("Database error:", e)
         return []
     finally:
@@ -325,16 +337,16 @@ def update_status(orderid, status, paid=None):
     # Decide what payed should be
     paid_value = 1 if (status.lower() == "paid" or status.lower() == "returned") else 0
     
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     try:
-        curr = conn.cursor()
+        curr = conn.cursor(buffered=True)
         curr.execute(
-            "UPDATE orders SET status = ?, payed = ? WHERE order_id = ?",
+            "UPDATE orders SET status = %s, payed = %s WHERE order_id = %s",
             (status, paid_value, orderid)
         )
         conn.commit()
         return curr.rowcount > 0  # True if something updated
-    except sqlite3.Error as e:
+    except mysql.connector.Error as e:
         print("Database error:", e)
         return False
     finally:
@@ -342,31 +354,31 @@ def update_status(orderid, status, paid=None):
 
 #Add book to book ()
 def add_book(title, author, price_buy, price_rent, quantity = 1):
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     try:
-        curr = conn.cursor()
+        curr = conn.cursor(buffered=True)
         #Check if we are adding a duplicate book
         curr.execute(
-            "SELECT book_id FROM books WHERE title = ? AND author = ?",
+            "SELECT book_id FROM books WHERE title = %s AND author = %s",
             (title, author)
         )
         existing = curr.fetchone()
         if existing:
             #If we have a duplicate, update the quantity
             curr.execute(
-                "UPDATE books SET quantity = quantity + ? WHERE book_id = ?",
+                "UPDATE books SET quantity = quantity + %s WHERE book_id = %s",
                 (int(quantity), existing[0])
             )
         else:
             #Otherwise insert a new book
             curr.execute(
                 "INSERT INTO books (title, author, price_buy, price_rent, quantity) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "VALUES (%s, %s, %s, %s, %s)",
                 (title, author, float(price_buy), float(price_rent), int(quantity))
             )
         conn.commit()
         return True
-    except sqlite3.Error as e:
+    except mysql.connector.Error as e:
         print("Database error:", e)
         return False
     finally:
