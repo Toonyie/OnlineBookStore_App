@@ -1,5 +1,5 @@
 requests
 flask
 bcrypt
-tkinter
-threading
+mysql-connector-python
+dotenv
