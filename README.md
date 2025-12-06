@@ -78,3 +78,14 @@ You need to create a configuration file to store your secrets.
    # Email Config (Required for Billing Receipts)
    BOOKSTORE_EMAIL=your_email@gmail.com
    BOOKSTORE_EMAIL_PASS=abcdefghijklmnop
+
+## ▶️ How to Run
+Open a terminal in the project folder and run:
+```bash
+pip install -r requirements.txt
+python app.py
+```
+On a seperate terminal run:
+```bash
+python tinkter.py
+```
