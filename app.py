@@ -31,7 +31,7 @@ try:
 except mysql.connector.Error as err:
     print(f"Error creating connection pool: {err}")
     exit(1)
-    
+
 #Connect to MySQL database
 def get_db_connection():
     try:

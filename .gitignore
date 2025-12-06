@@ -1,0 +1,7 @@
+# Secrets - NEVER commit these
+database.env
+.env
+
+# Python temporary files
+__pycache__/
+*.pyc

@@ -2,5 +2,4 @@ requests
 flask
 bcrypt
 mysql-connector-python
-dotenv
-threading
+python-dotenv
