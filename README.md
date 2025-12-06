@@ -57,7 +57,20 @@ The project consists of the following main files:
   SQLite database storing users, books, and orders (with quantities and statuses).
 
 ---
+### 🗄️ Database Setup
+1. **Install MySQL Server** and ensure the service is running.
+2. **Import the Database:**
+   - Open MySQL Workbench.
+   - Go to **Server** > **Data Import**.
+   - Select **Import from Self-Contained File** and choose the `database_setup.sql` file from this repository.
+   - Click **Start Import**.
+   *This will create the `bookstore_db` database and populate it with the required tables and sample data.*
 
+---
+### ⚙️ Configuration
+1. Create a `.env` file in the root directory.
+2. Copy the contents of `database.env.example` into `.env`.
+3. Update `DB_PASS` with your local MySQL password.
 ## ▶️ How to Run
 1. Start the backend server on a terminal:
    ```bash
@@ -65,3 +78,4 @@ The project consists of the following main files:
 2. Start the application on a seperate terminal:
    ```bash
    python tinkter.py
+
