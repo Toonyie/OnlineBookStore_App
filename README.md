@@ -45,7 +45,7 @@ The project consists of the following main files:
 
 - **`database_setup.sql`** SQL dump file containing the database schema and sample data required to run the app.
 
-- **`database.env.example`** Template file for environment variables (Database credentials & Email config).
+- **`database.env`** Configuration file for environment variables (Database credentials & Email config). **(Not included in repo for security)**
 
 ---
 
@@ -61,15 +61,20 @@ Before running the application, you must configure the database and email settin
    - Click **Start Import**.
    *This will create the `bookstore_db` database and populate it with the required tables.*
 
-### 2. Environment Configuration (.env)
-1. Create a file named `.env` in the root directory.
-2. Copy the contents of `database.env.example` into your new `.env` file.
-3. Update the values with your local settings:
+### 2. Configuration File (`database.env`)
+You need to create a configuration file to store your secrets.
 
-   **Database Config:**
+1. Create a file named **`database.env`** in the root directory.
+2. Copy the template below and fill in your details:
+
    ```ini
+   # Database Config
    DB_HOST=localhost
    DB_PORT=3306
    DB_NAME=bookstore_db
-   DB_USER=your_mysql_user  # e.g., bookstore_admin
+   DB_USER=your_mysql_user      # e.g., bookstore_admin
    DB_PASS=your_mysql_password
+   
+   # Email Config (Required for Billing Receipts)
+   BOOKSTORE_EMAIL=your_email@gmail.com
+   BOOKSTORE_EMAIL_PASS=abcdefghijklmnop
